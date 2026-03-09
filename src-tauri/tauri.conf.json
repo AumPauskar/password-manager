@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "tauri-apppassword-manager",
+  "productName": "Password Manager",
   "version": "0.1.0",
-  "identifier": "com.aum.tauri-apppassword-manager",
+  "identifier": "com.aum.passwordmanager",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
@@ -12,7 +12,7 @@
   "app": {
     "windows": [
       {
-        "title": "tauri-apppassword-manager",
+        "title": "password-manager",
         "width": 800,
         "height": 600
       }
