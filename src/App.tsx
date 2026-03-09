@@ -33,7 +33,7 @@ export default function App() {
   });
 
   const filteredPasswords = passwords.filter(p =>
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
+    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
     p.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
@@ -108,7 +108,7 @@ export default function App() {
       {/* Titlebar / Drag region for Tauri */}
       <div data-tauri-drag-region className="h-8 w-full bg-neutral-900 border-b border-neutral-800 flex items-center px-4 shrink-0 shadow-sm relative z-50">
         <Shield className="w-4 h-4 text-emerald-500 mr-2 pointer-events-none" />
-        <span className="text-xs font-medium text-neutral-400 pointer-events-none">Antigravity Vault</span>
+        <span className="text-xs font-medium text-neutral-400 pointer-events-none">Password Manager</span>
       </div>
 
       <main className="flex-1 overflow-hidden flex flex-col max-w-4xl mx-auto w-full p-6 gap-6 relative">
@@ -120,8 +120,8 @@ export default function App() {
             </h1>
             <p className="text-neutral-400 text-sm">Manage your credentials safely.</p>
           </div>
-          
-          <button 
+
+          <button
             onClick={handleOpenModal}
             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium transition-colors text-sm shadow-sm"
           >
@@ -144,10 +144,10 @@ export default function App() {
         <div className="flex-1 overflow-y-auto pr-2 pb-6 flex gap-3 flex-col">
           {filteredPasswords.map((item) => {
             const isVisible = visiblePasswords[item.id] || false;
-            
+
             return (
-              <div 
-                key={item.id} 
+              <div
+                key={item.id}
                 className="group flex flex-col p-4 bg-neutral-900/50 hover:bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition-all rounded-xl shadow-sm"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2">
@@ -167,20 +167,20 @@ export default function App() {
 
                   <div className="flex items-center gap-2 sm:gap-3 bg-neutral-950/50 p-1.5 rounded-lg border border-neutral-800/50 sm:border-none sm:bg-transparent px-3 sm:px-0">
                     <div className="relative flex-1 sm:w-48">
-                      <input 
-                        type={isVisible ? "text" : "password"} 
-                        readOnly 
+                      <input
+                        type={isVisible ? "text" : "password"}
+                        readOnly
                         value={item.password}
                         className="w-full bg-transparent text-sm text-neutral-300 outline-none font-mono py-1 px-2 select-all"
                       />
                     </div>
-                    <button 
+                    <button
                       onClick={() => toggleVisibility(item.id)}
                       className="p-1.5 text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-md transition-colors"
                     >
                       {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
-                    <button 
+                    <button
                       onClick={() => copyToClipboard(item.password)}
                       title="Copy Password"
                       className="p-1.5 text-neutral-500 hover:text-emerald-400 hover:bg-neutral-800 rounded-md transition-colors"
@@ -196,16 +196,16 @@ export default function App() {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                       {item.customFields.map((field) => (
                         <div key={field.id} className="flex flex-col bg-neutral-950/30 p-2 rounded-lg border border-neutral-800/50">
-                           <span className="text-xs text-neutral-500 uppercase tracking-wider mb-1">{field.name || "Custom Field"}</span>
-                           <div className="flex items-center justify-between">
+                          <span className="text-xs text-neutral-500 uppercase tracking-wider mb-1">{field.name || "Custom Field"}</span>
+                          <div className="flex items-center justify-between">
                             <span className="text-sm font-mono text-neutral-300 truncate">{field.value}</span>
-                            <button 
+                            <button
                               onClick={() => copyToClipboard(field.value)}
                               className="p-1 text-neutral-500 hover:text-emerald-400 transition-colors"
                             >
                               <Copy className="w-3 h-3" />
                             </button>
-                           </div>
+                          </div>
                         </div>
                       ))}
                     </div>
@@ -232,22 +232,22 @@ export default function App() {
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between p-4 border-b border-neutral-800 bg-neutral-900">
               <h2 className="text-lg font-medium text-white">Add New Password</h2>
-              <button 
+              <button
                 onClick={() => setIsModalOpen(false)}
                 className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
-            
+
             <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-4">
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-neutral-400">App / Website Name *</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   autoFocus
                   value={newEntry.name}
-                  onChange={e => setNewEntry({...newEntry, name: e.target.value})}
+                  onChange={e => setNewEntry({ ...newEntry, name: e.target.value })}
                   className="w-full bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-sm"
                   placeholder="e.g. Google, GitHub, Netflix"
                 />
@@ -256,20 +256,20 @@ export default function App() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-neutral-400">Username</label>
-                  <input 
-                    type="text" 
+                  <input
+                    type="text"
                     value={newEntry.username}
-                    onChange={e => setNewEntry({...newEntry, username: e.target.value})}
+                    onChange={e => setNewEntry({ ...newEntry, username: e.target.value })}
                     className="w-full bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-sm"
                     placeholder="johndoe123"
                   />
                 </div>
                 <div className="flex flex-col gap-1.5">
                   <label className="text-sm font-medium text-neutral-400">Email</label>
-                  <input 
-                    type="email" 
+                  <input
+                    type="email"
                     value={newEntry.email}
-                    onChange={e => setNewEntry({...newEntry, email: e.target.value})}
+                    onChange={e => setNewEntry({ ...newEntry, email: e.target.value })}
                     className="w-full bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-sm"
                     placeholder="john@example.com"
                   />
@@ -278,10 +278,10 @@ export default function App() {
 
               <div className="flex flex-col gap-1.5">
                 <label className="text-sm font-medium text-neutral-400">Password *</label>
-                <input 
-                  type="text" 
+                <input
+                  type="text"
                   value={newEntry.password}
-                  onChange={e => setNewEntry({...newEntry, password: e.target.value})}
+                  onChange={e => setNewEntry({ ...newEntry, password: e.target.value })}
                   className="w-full bg-neutral-950 border border-neutral-800 text-neutral-100 font-mono rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-sm select-all"
                   placeholder="SuperSecretP@ssw0rd!"
                 />
@@ -291,34 +291,34 @@ export default function App() {
               <div className="border-t border-neutral-800/50 pt-4 mt-2">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-medium text-neutral-300">Additional Fields</span>
-                  <button 
+                  <button
                     onClick={handleAddCustomField}
                     className="text-xs flex items-center gap-1 text-emerald-500 hover:text-emerald-400 transition-colors"
                   >
                     <ListPlus className="w-4 h-4" /> Add Field
                   </button>
                 </div>
-                
+
                 <div className="flex flex-col gap-3">
                   {newEntry.customFields?.map((field) => (
                     <div key={field.id} className="flex gap-2 items-start bg-neutral-950/50 p-3 rounded-lg border border-neutral-800/50">
                       <div className="flex-1 flex flex-col gap-2">
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           value={field.name}
                           onChange={e => handleCustomFieldChange(field.id, "name", e.target.value)}
                           className="w-full bg-transparent border-b border-neutral-800 text-white pb-1 outline-none focus:border-emerald-500/50 transition-all text-xs font-medium placeholder-neutral-600 truncate"
                           placeholder="Field Name (e.g. Recovery Code)"
                         />
-                        <input 
-                          type="text" 
+                        <input
+                          type="text"
                           value={field.value}
                           onChange={e => handleCustomFieldChange(field.id, "value", e.target.value)}
                           className="w-full bg-neutral-900 border border-neutral-800 text-neutral-300 font-mono rounded-md px-2 py-1.5 outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all text-sm"
                           placeholder="Value"
                         />
                       </div>
-                      <button 
+                      <button
                         onClick={() => handleRemoveCustomField(field.id)}
                         className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors mt-0.5"
                       >
@@ -334,13 +334,13 @@ export default function App() {
             </div>
 
             <div className="p-4 border-t border-neutral-800 bg-neutral-900 flex justify-end gap-3">
-              <button 
+              <button
                 onClick={() => setIsModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-neutral-400 hover:text-white transition-colors"
               >
                 Cancel
               </button>
-              <button 
+              <button
                 onClick={handleSaveEntry}
                 className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-lg font-medium transition-colors text-sm shadow-sm"
               >
