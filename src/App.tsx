@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Key, Copy, Search, Shield, Eye, EyeOff, Plus, X, ListPlus, Save, Trash2 } from "lucide-react";
+import { Key, Copy, Search, Shield, Eye, EyeOff, Plus, X, ListPlus, Save, Trash2, Edit2, Check } from "lucide-react";
 import "./App.css";
 
 type CustomField = {
@@ -24,6 +24,8 @@ export default function App() {
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [newEntry, setNewEntry] = useState<Partial<PasswordEntry>>({
     name: "",
     username: "",
@@ -31,6 +33,7 @@ export default function App() {
     password: "",
     customFields: []
   });
+  const [copiedField, setCopiedField] = useState<string | null>(null);
 
   const filteredPasswords = passwords.filter(p =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -38,18 +41,25 @@ export default function App() {
     p.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
-  const toggleVisibility = (id: string) => {
+  const toggleVisibility = (id: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
     setVisiblePasswords(prev => ({
       ...prev,
       [id]: !prev[id]
     }));
   };
 
-  const copyToClipboard = (text: string) => {
+  const copyToClipboard = (text: string, e?: React.MouseEvent, fieldName?: string) => {
+    if (e) e.stopPropagation();
+    if (!text) return;
     navigator.clipboard.writeText(text);
+    if (fieldName) {
+      setCopiedField(fieldName);
+      setTimeout(() => setCopiedField(null), 2000);
+    }
   };
 
-  const handleOpenModal = () => {
+  const handleAddNew = () => {
     setNewEntry({
       name: "",
       username: "",
@@ -57,6 +67,15 @@ export default function App() {
       password: "",
       customFields: []
     });
+    setEditingId(null);
+    setIsEditing(true);
+    setIsModalOpen(true);
+  };
+
+  const handleOpenExisting = (entry: PasswordEntry) => {
+    setNewEntry(entry);
+    setEditingId(entry.id);
+    setIsEditing(false);
     setIsModalOpen(true);
   };
 
@@ -91,7 +110,7 @@ export default function App() {
     }
 
     const entry: PasswordEntry = {
-      id: crypto.randomUUID(),
+      id: editingId || crypto.randomUUID(),
       name: newEntry.name || "",
       username: newEntry.username || "",
       email: newEntry.email || "",
@@ -99,9 +118,29 @@ export default function App() {
       customFields: newEntry.customFields || []
     };
 
-    setPasswords(prev => [...prev, entry]);
+    if (editingId) {
+      setPasswords(prev => prev.map(p => p.id === editingId ? entry : p));
+    } else {
+      setPasswords(prev => [...prev, entry]);
+    }
+    setIsEditing(false);
     setIsModalOpen(false);
   };
+
+  const inputClasses = (isEditMode: boolean) => 
+    `w-full bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 outline-none transition-all text-sm ${
+      isEditMode 
+        ? "focus:ring-2 focus:ring-emerald-500/50 hover:bg-neutral-900/80" 
+        : "cursor-copy hover:border-emerald-500/50 focus:border-emerald-500/50"
+    }`;
+
+  const renderCopyIndicator = (fieldName: string) => (
+    copiedField === fieldName && (
+      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-emerald-400 font-medium flex items-center gap-1">
+        <Check className="w-3 h-3" /> Copied
+      </span>
+    )
+  );
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-50 flex flex-col font-sans selection:bg-neutral-800">
@@ -122,7 +161,7 @@ export default function App() {
           </div>
 
           <button
-            onClick={handleOpenModal}
+            onClick={handleAddNew}
             className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium transition-colors text-sm shadow-sm"
           >
             <Plus className="w-4 h-4" />
@@ -148,7 +187,11 @@ export default function App() {
             return (
               <div
                 key={item.id}
-                className="group flex flex-col p-4 bg-neutral-900/50 hover:bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition-all rounded-xl shadow-sm"
+                onClick={(e) => {
+                  if ((e.target as HTMLElement).closest('button')) return;
+                  handleOpenExisting(item);
+                }}
+                className="group flex flex-col p-4 bg-neutral-900/50 hover:bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition-all rounded-xl shadow-sm cursor-pointer"
               >
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2">
                   <div className="flex items-center gap-4 mb-3 sm:mb-0">
@@ -171,17 +214,18 @@ export default function App() {
                         type={isVisible ? "text" : "password"}
                         readOnly
                         value={item.password}
-                        className="w-full bg-transparent text-sm text-neutral-300 outline-none font-mono py-1 px-2 select-all"
+                        className="w-full bg-transparent text-sm text-neutral-300 outline-none font-mono py-1 px-2 select-all cursor-pointer"
+                        title="Click item to edit / view details"
                       />
                     </div>
                     <button
-                      onClick={() => toggleVisibility(item.id)}
+                      onClick={(e) => toggleVisibility(item.id, e)}
                       className="p-1.5 text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-md transition-colors"
                     >
                       {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                     <button
-                      onClick={() => copyToClipboard(item.password)}
+                      onClick={(e) => copyToClipboard(item.password, e)}
                       title="Copy Password"
                       className="p-1.5 text-neutral-500 hover:text-emerald-400 hover:bg-neutral-800 rounded-md transition-colors"
                     >
@@ -189,28 +233,6 @@ export default function App() {
                     </button>
                   </div>
                 </div>
-
-                {/* Display Custom Fields */}
-                {item.customFields && item.customFields.length > 0 && (
-                  <div className="mt-3 pt-3 border-t border-neutral-800/50">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {item.customFields.map((field) => (
-                        <div key={field.id} className="flex flex-col bg-neutral-950/30 p-2 rounded-lg border border-neutral-800/50">
-                          <span className="text-xs text-neutral-500 uppercase tracking-wider mb-1">{field.name || "Custom Field"}</span>
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-mono text-neutral-300 truncate">{field.value}</span>
-                            <button
-                              onClick={() => copyToClipboard(field.value)}
-                              className="p-1 text-neutral-500 hover:text-emerald-400 transition-colors"
-                            >
-                              <Copy className="w-3 h-3" />
-                            </button>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
               </div>
             );
           })}
@@ -226,108 +248,153 @@ export default function App() {
         </div>
       </main>
 
-      {/* Add Password Modal */}
+      {/* View/Edit Password Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
           <div className="bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
             <div className="flex items-center justify-between p-4 border-b border-neutral-800 bg-neutral-900">
-              <h2 className="text-lg font-medium text-white">Add New Password</h2>
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <h2 className="text-lg font-medium text-white">
+                {editingId ? (isEditing ? "Edit Password" : "Password Details") : "Add New Password"}
+              </h2>
+              <div className="flex items-center gap-2">
+                {editingId && !isEditing && (
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors flex items-center gap-1.5 px-3 text-sm font-medium"
+                  >
+                    <Edit2 className="w-4 h-4" /> Edit
+                  </button>
+                )}
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
 
             <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-neutral-400">App / Website Name *</label>
-                <input
-                  type="text"
-                  autoFocus
-                  value={newEntry.name}
-                  onChange={e => setNewEntry({ ...newEntry, name: e.target.value })}
-                  className="w-full bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-sm"
-                  placeholder="e.g. Google, GitHub, Netflix"
-                />
+              <div className="flex flex-col gap-1.5 relative">
+                <label className="text-sm font-medium text-neutral-400">App / Website Name {isEditing && "*"}</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    autoFocus={isEditing && !editingId}
+                    readOnly={!isEditing}
+                    value={newEntry.name}
+                    onClick={() => !isEditing && copyToClipboard(newEntry.name || "", undefined, "name")}
+                    onChange={e => isEditing && setNewEntry({ ...newEntry, name: e.target.value })}
+                    className={inputClasses(isEditing)}
+                    placeholder="e.g. Google, GitHub, Netflix"
+                  />
+                  {!isEditing && renderCopyIndicator("name")}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-1.5 relative">
                   <label className="text-sm font-medium text-neutral-400">Username</label>
-                  <input
-                    type="text"
-                    value={newEntry.username}
-                    onChange={e => setNewEntry({ ...newEntry, username: e.target.value })}
-                    className="w-full bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-sm"
-                    placeholder="johndoe123"
-                  />
+                  <div className="relative">
+                    <input
+                      type="text"
+                      readOnly={!isEditing}
+                      value={newEntry.username}
+                      onClick={() => !isEditing && copyToClipboard(newEntry.username || "", undefined, "username")}
+                      onChange={e => isEditing && setNewEntry({ ...newEntry, username: e.target.value })}
+                      className={inputClasses(isEditing)}
+                      placeholder="johndoe123"
+                    />
+                    {!isEditing && renderCopyIndicator("username")}
+                  </div>
                 </div>
-                <div className="flex flex-col gap-1.5">
+                <div className="flex flex-col gap-1.5 relative">
                   <label className="text-sm font-medium text-neutral-400">Email</label>
-                  <input
-                    type="email"
-                    value={newEntry.email}
-                    onChange={e => setNewEntry({ ...newEntry, email: e.target.value })}
-                    className="w-full bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-sm"
-                    placeholder="john@example.com"
-                  />
+                  <div className="relative">
+                    <input
+                      type="email"
+                      readOnly={!isEditing}
+                      value={newEntry.email}
+                      onClick={() => !isEditing && copyToClipboard(newEntry.email || "", undefined, "email")}
+                      onChange={e => isEditing && setNewEntry({ ...newEntry, email: e.target.value })}
+                      className={inputClasses(isEditing)}
+                      placeholder="john@example.com"
+                    />
+                    {!isEditing && renderCopyIndicator("email")}
+                  </div>
                 </div>
               </div>
 
-              <div className="flex flex-col gap-1.5">
-                <label className="text-sm font-medium text-neutral-400">Password *</label>
-                <input
-                  type="text"
-                  value={newEntry.password}
-                  onChange={e => setNewEntry({ ...newEntry, password: e.target.value })}
-                  className="w-full bg-neutral-950 border border-neutral-800 text-neutral-100 font-mono rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-emerald-500/50 transition-all text-sm select-all"
-                  placeholder="SuperSecretP@ssw0rd!"
-                />
+              <div className="flex flex-col gap-1.5 relative">
+                <label className="text-sm font-medium text-neutral-400">Password {isEditing && "*"}</label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    readOnly={!isEditing}
+                    value={newEntry.password}
+                    onClick={() => !isEditing && copyToClipboard(newEntry.password || "", undefined, "password")}
+                    onChange={e => isEditing && setNewEntry({ ...newEntry, password: e.target.value })}
+                    className={`${inputClasses(isEditing)} font-mono`}
+                    placeholder="SuperSecretP@ssw0rd!"
+                  />
+                  {!isEditing && renderCopyIndicator("password")}
+                </div>
               </div>
 
               {/* Custom Fields Section */}
               <div className="border-t border-neutral-800/50 pt-4 mt-2">
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-sm font-medium text-neutral-300">Additional Fields</span>
-                  <button
-                    onClick={handleAddCustomField}
-                    className="text-xs flex items-center gap-1 text-emerald-500 hover:text-emerald-400 transition-colors"
-                  >
-                    <ListPlus className="w-4 h-4" /> Add Field
-                  </button>
+                  {isEditing && (
+                    <button
+                      onClick={handleAddCustomField}
+                      className="text-xs flex items-center gap-1 text-emerald-500 hover:text-emerald-400 transition-colors"
+                    >
+                      <ListPlus className="w-4 h-4" /> Add Field
+                    </button>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-3">
                   {newEntry.customFields?.map((field) => (
-                    <div key={field.id} className="flex gap-2 items-start bg-neutral-950/50 p-3 rounded-lg border border-neutral-800/50">
-                      <div className="flex-1 flex flex-col gap-2">
+                    <div key={field.id} className="flex gap-2 items-start bg-neutral-950/50 p-3 rounded-lg border border-neutral-800/50 relative">
+                      <div className="flex-1 flex flex-col gap-2 relative">
                         <input
                           type="text"
+                          readOnly={!isEditing}
                           value={field.name}
-                          onChange={e => handleCustomFieldChange(field.id, "name", e.target.value)}
-                          className="w-full bg-transparent border-b border-neutral-800 text-white pb-1 outline-none focus:border-emerald-500/50 transition-all text-xs font-medium placeholder-neutral-600 truncate"
-                          placeholder="Field Name (e.g. Recovery Code)"
+                          onClick={() => !isEditing && copyToClipboard(field.name || "", undefined, `field-${field.id}-name`)}
+                          onChange={e => isEditing && handleCustomFieldChange(field.id, "name", e.target.value)}
+                          className={`w-full bg-transparent border-b border-neutral-800 text-white pb-1 outline-none transition-all text-xs font-medium placeholder-neutral-600 truncate ${isEditing ? "focus:border-emerald-500/50" : "cursor-copy hover:border-emerald-500/50"}`}
+                          placeholder="Field Name"
                         />
-                        <input
-                          type="text"
-                          value={field.value}
-                          onChange={e => handleCustomFieldChange(field.id, "value", e.target.value)}
-                          className="w-full bg-neutral-900 border border-neutral-800 text-neutral-300 font-mono rounded-md px-2 py-1.5 outline-none focus:ring-1 focus:ring-emerald-500/50 transition-all text-sm"
-                          placeholder="Value"
-                        />
+                        {!isEditing && renderCopyIndicator(`field-${field.id}-name`)}
+                        
+                        <div className="relative">
+                          <input
+                            type="text"
+                            readOnly={!isEditing}
+                            value={field.value}
+                            onClick={() => !isEditing && copyToClipboard(field.value || "", undefined, `field-${field.id}-value`)}
+                            onChange={e => isEditing && handleCustomFieldChange(field.id, "value", e.target.value)}
+                            className={`w-full bg-neutral-900 border border-neutral-800 text-neutral-300 font-mono rounded-md px-2 py-1.5 outline-none transition-all text-sm ${isEditing ? "focus:ring-1 focus:ring-emerald-500/50" : "cursor-copy hover:border-emerald-500/50"}`}
+                            placeholder="Value"
+                          />
+                          {!isEditing && renderCopyIndicator(`field-${field.id}-value`)}
+                        </div>
                       </div>
-                      <button
-                        onClick={() => handleRemoveCustomField(field.id)}
-                        className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors mt-0.5"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      {isEditing && (
+                        <button
+                          onClick={() => handleRemoveCustomField(field.id)}
+                          className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors mt-0.5"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      )}
                     </div>
                   ))}
                   {newEntry.customFields?.length === 0 && (
-                    <p className="text-xs text-neutral-600 italic">No custom fields added.</p>
+                    <p className="text-xs text-neutral-600 italic">No additional fields.</p>
                   )}
                 </div>
               </div>
@@ -338,15 +405,17 @@ export default function App() {
                 onClick={() => setIsModalOpen(false)}
                 className="px-4 py-2 text-sm font-medium text-neutral-400 hover:text-white transition-colors"
               >
-                Cancel
+                {isEditing ? "Cancel" : "Close"}
               </button>
-              <button
-                onClick={handleSaveEntry}
-                className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-lg font-medium transition-colors text-sm shadow-sm"
-              >
-                <Save className="w-4 h-4" />
-                Save Entry
-              </button>
+              {isEditing && (
+                <button
+                  onClick={handleSaveEntry}
+                  className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-lg font-medium transition-colors text-sm shadow-sm"
+                >
+                  <Save className="w-4 h-4" />
+                  Save Entry
+                </button>
+              )}
             </div>
           </div>
         </div>
