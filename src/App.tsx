@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Key, Copy, Search, Shield, Eye, EyeOff, Plus, X, ListPlus, Save, Trash2, Edit2, Check } from "lucide-react";
+import { load } from "@tauri-apps/plugin-store";
 import "./App.css";
 
 type CustomField = {
@@ -34,6 +35,21 @@ export default function App() {
     customFields: []
   });
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  useEffect(() => {
+    async function initStore() {
+      try {
+        const store = await load("passwords.json", { autoSave: true, defaults: {} });
+        const saved = await store.get<PasswordEntry[]>("passwords");
+        if (saved) {
+          setPasswords(saved);
+        }
+      } catch (err) {
+        console.error("Failed to load store:", err);
+      }
+    }
+    initStore();
+  }, []);
 
   const filteredPasswords = passwords.filter(p =>
     p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -103,6 +119,15 @@ export default function App() {
     }));
   };
 
+  const saveToStore = async (newPasswords: PasswordEntry[]) => {
+    try {
+      const store = await load("passwords.json", { autoSave: true, defaults: {} });
+      await store.set("passwords", newPasswords);
+    } catch (err) {
+      console.error("Failed to save to store:", err);
+    }
+  };
+
   const handleSaveEntry = () => {
     if (!newEntry.name || !newEntry.password) {
       alert("App Name and Password are required.");
@@ -118,11 +143,29 @@ export default function App() {
       customFields: newEntry.customFields || []
     };
 
+    let newPasswords;
     if (editingId) {
-      setPasswords(prev => prev.map(p => p.id === editingId ? entry : p));
+      newPasswords = passwords.map(p => p.id === editingId ? entry : p);
     } else {
-      setPasswords(prev => [...prev, entry]);
+      newPasswords = [...passwords, entry];
     }
+    
+    setPasswords(newPasswords);
+    saveToStore(newPasswords);
+    
+    setIsEditing(false);
+    setIsModalOpen(false);
+  };
+
+  const handleDeleteEntry = () => {
+    if (!editingId) return;
+    const confirmDelete = window.confirm("Are you sure you want to delete this password?");
+    if (!confirmDelete) return;
+
+    const newPasswords = passwords.filter(p => p.id !== editingId);
+    setPasswords(newPasswords);
+    saveToStore(newPasswords);
+    
     setIsEditing(false);
     setIsModalOpen(false);
   };
@@ -400,22 +443,33 @@ export default function App() {
               </div>
             </div>
 
-            <div className="p-4 border-t border-neutral-800 bg-neutral-900 flex justify-end gap-3">
-              <button
-                onClick={() => setIsModalOpen(false)}
-                className="px-4 py-2 text-sm font-medium text-neutral-400 hover:text-white transition-colors"
-              >
-                {isEditing ? "Cancel" : "Close"}
-              </button>
-              {isEditing && (
+            <div className="p-4 border-t border-neutral-800 bg-neutral-900 flex justify-between gap-3">
+              {isEditing && editingId ? (
                 <button
-                  onClick={handleSaveEntry}
-                  className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-lg font-medium transition-colors text-sm shadow-sm"
+                  onClick={handleDeleteEntry}
+                  className="px-4 py-2 text-sm font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-2"
                 >
-                  <Save className="w-4 h-4" />
-                  Save Entry
+                  <Trash2 className="w-4 h-4" /> Delete
                 </button>
-              )}
+              ) : <div></div>}
+              
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setIsModalOpen(false)}
+                  className="px-4 py-2 text-sm font-medium text-neutral-400 hover:text-white transition-colors"
+                >
+                  {isEditing ? "Cancel" : "Close"}
+                </button>
+                {isEditing && (
+                  <button
+                    onClick={handleSaveEntry}
+                    className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-5 py-2 rounded-lg font-medium transition-colors text-sm shadow-sm"
+                  >
+                    <Save className="w-4 h-4" />
+                    Save Entry
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
