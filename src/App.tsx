@@ -26,6 +26,7 @@ export default function App() {
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [newEntry, setNewEntry] = useState<Partial<PasswordEntry>>({
     name: "",
@@ -159,13 +160,16 @@ export default function App() {
 
   const handleDeleteEntry = () => {
     if (!editingId) return;
-    const confirmDelete = window.confirm("Are you sure you want to delete this password?");
-    if (!confirmDelete) return;
+    setIsDeleteConfirmOpen(true);
+  };
 
+  const confirmDelete = () => {
+    if (!editingId) return;
     const newPasswords = passwords.filter(p => p.id !== editingId);
     setPasswords(newPasswords);
     saveToStore(newPasswords);
     
+    setIsDeleteConfirmOpen(false);
     setIsEditing(false);
     setIsModalOpen(false);
   };
@@ -301,12 +305,20 @@ export default function App() {
               </h2>
               <div className="flex items-center gap-2">
                 {editingId && !isEditing && (
-                  <button
-                    onClick={() => setIsEditing(true)}
-                    className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors flex items-center gap-1.5 px-3 text-sm font-medium"
-                  >
-                    <Edit2 className="w-4 h-4" /> Edit
-                  </button>
+                  <>
+                    <button
+                      onClick={handleDeleteEntry}
+                      className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-1.5 px-3 text-sm font-medium"
+                    >
+                      <Trash2 className="w-4 h-4" /> Delete
+                    </button>
+                    <button
+                      onClick={() => setIsEditing(true)}
+                      className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors flex items-center gap-1.5 px-3 text-sm font-medium"
+                    >
+                      <Edit2 className="w-4 h-4" /> Edit
+                    </button>
+                  </>
                 )}
                 <button
                   onClick={() => setIsModalOpen(false)}
@@ -470,6 +482,38 @@ export default function App() {
                   </button>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteConfirmOpen && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl w-full max-w-sm overflow-hidden flex flex-col">
+            <div className="p-6 flex flex-col items-center text-center">
+              <div className="w-12 h-12 rounded-full bg-red-500/10 flex items-center justify-center mb-4">
+                <Trash2 className="w-6 h-6 text-red-500" />
+              </div>
+              <h3 className="text-xl font-medium text-white mb-2">Delete Password?</h3>
+              <p className="text-neutral-400 text-sm">
+                Are you sure you want to delete this password? This action cannot be undone.
+              </p>
+            </div>
+            
+            <div className="p-4 border-t border-neutral-800 bg-neutral-950/50 flex gap-3">
+              <button
+                onClick={() => setIsDeleteConfirmOpen(false)}
+                className="flex-1 px-4 py-2.5 text-sm font-medium text-neutral-300 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="flex-1 px-4 py-2.5 text-sm font-medium bg-red-600 hover:bg-red-500 text-white rounded-lg transition-colors shadow-sm"
+              >
+                Delete
+              </button>
             </div>
           </div>
         </div>
