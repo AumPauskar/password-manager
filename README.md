@@ -46,6 +46,35 @@ To quickly get the application up and running locally, follow these steps:
    ```
    > Note: The first time you run this command, Cargo will download and compile all Rust dependencies. This could take a few minutes.
 
+## 📦 Building the App
+
+### Windows
+**Prerequisites:**
+- Visual Studio 2022 C++ Build Tools (or the "Desktop development with C++" workload in Visual Studio Installer).
+- [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (usually pre-installed on Windows 11).
+
+**Build Command:**
+```bash
+npm run tauri build
+```
+This command will create an executable (`.exe`) and MSI installer in the `src-tauri/target/release/bundle/` directory.
+
+### Android
+**Prerequisites:**
+- **Android Studio**: Install the Android SDK, NDK, and CMake via the SDK Manager.
+- **Java Development Kit (JDK)**: JDK 17 or later.
+- **Set Environment Variables**: Ensure `ANDROID_HOME` and `NDK_HOME` are set in your environment variables.
+- **Rust Android Targets**: Add the necessary Rust targets by running:
+  ```bash
+  rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
+  ```
+
+**Build Command:**
+```bash
+npm run tauri android build
+```
+This command will compile and build an APK (and App Bundle).
+
 ## 🛠 Recommended IDE Setup
 
 - [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
