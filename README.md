@@ -13,10 +13,12 @@ This is a modern, minimal Password Manager application built leveraging the foll
 You need a few things set up before starting:
 1. **Node.js** (v18.x or later) and **npm** (or yarn/pnpm).
 2. **Rust** and **Cargo**. Follow the instructions on the [official Rust installation page](https://www.rust-lang.org/tools/install).
-3. **OS-Specific Build Tools**: As Tauri builds native apps, you must have platform-specific C++ build tools installed.
-   - **Windows**: Install the "C++ build tools" or "Desktop development with C++" workload via Visual Studio Installer.
-   - **macOS**: Install Xcode Command Line Tools (`xcode-select --install`).
-   - **Linux**: Install standard build-essential tools (`sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`).
+3. **OS-Specific Build Tools:** As Tauri builds native apps, you must have platform-specific C++ build tools installed.
+   - **Windows:** Install the "C++ build tools" or "Desktop development with C++" workload via Visual Studio Installer.
+   - **macOS:** Install Xcode Command Line Tools (`xcode-select --install`).
+   - **Linux**
+      - **Debian based systems:** Install standard build-essential tools (`sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`).
+      - **Arch based systems:** `sudo pacman -S webkit2gtk-4.1`
 
 ### Local Setup
 
