@@ -31,8 +31,8 @@ import AuthModal from "./components/AuthModal";
 
 const DEFAULT_SYNC_CONFIG: CloudSyncConfig = {
   provider: "azure",
-  azureFunctionUrl: "https://password-manager-function-dqateuathggrg5fq.centralindia-01.azurewebsites.net/api/sync",
-  azureFunctionKey: "1fPddUChDcHtktx2vGl6oAEFJPnBGp-cbMSiwpBA9bzAAzFuewmQSA==",
+  azureFunctionUrl: import.meta.env.VITE_AZURE_FUNCTION_URL as string,
+  azureFunctionKey: import.meta.env.VITE_AZURE_FUNCTION_KEY as string,
   vaultId: "default",
   autoSync: true,
   lastSyncedAt: null,
@@ -344,10 +344,9 @@ export default function App() {
   };
 
   const inputClasses = (isEditMode: boolean) =>
-    `w-full bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 outline-none transition-all text-sm ${
-      isEditMode
-        ? "focus:ring-2 focus:ring-emerald-500/50 hover:bg-neutral-900/80"
-        : "cursor-copy hover:border-emerald-500/50 focus:border-emerald-500/50"
+    `w-full bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 outline-none transition-all text-sm ${isEditMode
+      ? "focus:ring-2 focus:ring-emerald-500/50 hover:bg-neutral-900/80"
+      : "cursor-copy hover:border-emerald-500/50 focus:border-emerald-500/50"
     }`;
 
   const renderCopyIndicator = (fieldName: string) =>
@@ -403,10 +402,10 @@ export default function App() {
               {syncStatus === "syncing"
                 ? "Syncing Cosmos..."
                 : syncStatus === "error"
-                ? "Sync Error"
-                : hasUnsyncedChanges
-                ? "Unsynced Changes"
-                : "Cosmos DB Synced"}
+                  ? "Sync Error"
+                  : hasUnsyncedChanges
+                    ? "Unsynced Changes"
+                    : "Cosmos DB Synced"}
             </span>
           </button>
         </div>
@@ -450,15 +449,14 @@ export default function App() {
               <button
                 onClick={handleManualSync}
                 disabled={syncStatus === "syncing"}
-                className={`flex items-center gap-2 border text-xs sm:text-sm font-medium px-3.5 py-2 rounded-lg transition-all shadow-sm ${
-                  syncStatus === "syncing"
+                className={`flex items-center gap-2 border text-xs sm:text-sm font-medium px-3.5 py-2 rounded-lg transition-all shadow-sm ${syncStatus === "syncing"
                     ? "bg-sky-950/60 border-sky-800 text-sky-300"
                     : syncStatus === "error"
-                    ? "bg-rose-950/40 border-rose-800 text-rose-300 hover:bg-rose-900/60"
-                    : hasUnsyncedChanges
-                    ? "bg-amber-950/40 border-amber-800 text-amber-300 hover:bg-amber-900/50"
-                    : "bg-neutral-900 border-neutral-800 text-sky-400 hover:bg-neutral-800 hover:text-sky-300"
-                }`}
+                      ? "bg-rose-950/40 border-rose-800 text-rose-300 hover:bg-rose-900/60"
+                      : hasUnsyncedChanges
+                        ? "bg-amber-950/40 border-amber-800 text-amber-300 hover:bg-amber-900/50"
+                        : "bg-neutral-900 border-neutral-800 text-sky-400 hover:bg-neutral-800 hover:text-sky-300"
+                  }`}
                 title="Synchronize passwords with Azure Cloud (Send & Receive)"
               >
                 {syncStatus === "syncing" ? (
@@ -769,9 +767,8 @@ export default function App() {
                           onChange={(e) => handleCustomFieldChange(field.id, "value", e.target.value)}
                           placeholder="Value"
                           onClick={() => !isEditing && copyToClipboard(field.value, undefined, field.id)}
-                          className={`w-full bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 text-xs outline-none ${
-                            !isEditing ? "cursor-copy" : ""
-                          }`}
+                          className={`w-full bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 text-xs outline-none ${!isEditing ? "cursor-copy" : ""
+                            }`}
                         />
                         {!isEditing && renderCopyIndicator(field.id)}
                       </div>
