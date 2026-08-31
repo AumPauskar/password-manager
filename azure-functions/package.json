@@ -1,0 +1,11 @@
+{
+  "name": "azure-sync-function",
+  "version": "1.0.0",
+  "description": "Password Manager Sync Azure Function",
+  "main": "src/functions/sync.js",
+  "dependencies": {
+    "@azure/functions": "^4.0.0",
+    "@azure/storage-blob": "^12.17.0",
+    "@azure/cosmos": "^4.0.0"
+  }
+}

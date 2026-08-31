@@ -1,27 +1,64 @@
-import { useState, useEffect } from "react";
-import { Key, Copy, Search, Shield, Eye, EyeOff, Plus, X, ListPlus, Save, Trash2, Edit2, Check } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import {
+  Key,
+  Copy,
+  Search,
+  Shield,
+  Eye,
+  EyeOff,
+  Plus,
+  X,
+  ListPlus,
+  Save,
+  Trash2,
+  Edit2,
+  Check,
+  Cloud,
+  RefreshCw,
+  AlertCircle,
+  Settings,
+  User,
+  FolderLock,
+  Sparkles,
+} from "lucide-react";
 import { load } from "@tauri-apps/plugin-store";
 import "./App.css";
+import { PasswordEntry, CloudSyncConfig, SyncStatus, SyncStats, AccountItem } from "./types/sync";
+import { performCloudSync } from "./services/syncService";
+import { getLocalAccount, saveAccountLocally } from "./services/authService";
+import CloudSyncModal from "./components/CloudSyncModal";
+import AuthModal from "./components/AuthModal";
 
-type CustomField = {
-  id: string;
-  name: string;
-  value: string;
-};
-
-type PasswordEntry = {
-  id: string;
-  name: string;
-  username: string;
-  email: string;
-  password: string;
-  customFields: CustomField[];
+const DEFAULT_SYNC_CONFIG: CloudSyncConfig = {
+  provider: "azure",
+  azureFunctionUrl: "https://password-manager-function-dqateuathggrg5fq.centralindia-01.azurewebsites.net/api/sync",
+  azureFunctionKey: "1fPddUChDcHtktx2vGl6oAEFJPnBGp-cbMSiwpBA9bzAAzFuewmQSA==",
+  vaultId: "default",
+  autoSync: true,
+  lastSyncedAt: null,
 };
 
 export default function App() {
   const [passwords, setPasswords] = useState<PasswordEntry[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
+
+  // User Account State
+  const [currentUser, setCurrentUser] = useState<AccountItem | null>(null);
+  const [isAuthModalOpen, setIsAuthModalOpen] = useState(false);
+
+  // Sync State
+  const [syncConfig, setSyncConfig] = useState<CloudSyncConfig>(DEFAULT_SYNC_CONFIG);
+  const [syncStatus, setSyncStatus] = useState<SyncStatus>("idle");
+  const [syncErrorMessage, setSyncErrorMessage] = useState<string | undefined>();
+  const [hasUnsyncedChanges, setHasUnsyncedChanges] = useState(false);
+  const [syncStats, setSyncStats] = useState<SyncStats>({
+    sentCount: 0,
+    receivedCount: 0,
+    totalCount: 0,
+    lastSyncedAt: null,
+  });
+  const [isSyncModalOpen, setIsSyncModalOpen] = useState(false);
 
   // Modal State
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -33,36 +70,156 @@ export default function App() {
     username: "",
     email: "",
     password: "",
-    customFields: []
+    customFields: [],
   });
   const [copiedField, setCopiedField] = useState<string | null>(null);
+
+  // Trigger sync helper
+  const executeSync = useCallback(
+    async (currentPasswords: PasswordEntry[], config: CloudSyncConfig) => {
+      setSyncStatus("syncing");
+      setSyncErrorMessage(undefined);
+
+      const result = await performCloudSync(currentPasswords, config);
+
+      if (result.success) {
+        setPasswords(result.passwords);
+        setSyncStats(result.stats);
+        setHasUnsyncedChanges(false);
+
+        const updatedConfig = { ...config, lastSyncedAt: result.stats.lastSyncedAt };
+        setSyncConfig(updatedConfig);
+
+        // Save updated passwords & config to persistent store
+        try {
+          const store = await load("passwords.json", { autoSave: true, defaults: {} });
+          await store.set("passwords", result.passwords);
+          await store.set("sync_config", updatedConfig);
+        } catch (err) {
+          console.error("Failed to save store after sync:", err);
+        }
+
+        setSyncStatus("success");
+        setTimeout(() => {
+          setSyncStatus("idle");
+        }, 3000);
+      } else {
+        setSyncStatus("error");
+        setSyncErrorMessage(result.error);
+      }
+    },
+    []
+  );
 
   useEffect(() => {
     async function initStore() {
       try {
         const store = await load("passwords.json", { autoSave: true, defaults: {} });
-        const saved = await store.get<PasswordEntry[]>("passwords");
-        if (saved) {
-          setPasswords(saved);
+        const savedPasswords = await store.get<PasswordEntry[]>("passwords");
+        const savedSyncConfig = await store.get<CloudSyncConfig>("sync_config");
+        const savedUser = await getLocalAccount();
+
+        if (savedUser) {
+          setCurrentUser(savedUser);
+        }
+
+        let loadedPasswords: PasswordEntry[] = [];
+        if (savedPasswords) {
+          loadedPasswords = savedPasswords;
+          setPasswords(savedPasswords);
+        }
+
+        let currentConfig = { ...DEFAULT_SYNC_CONFIG };
+        if (savedSyncConfig) {
+          currentConfig = {
+            ...DEFAULT_SYNC_CONFIG,
+            ...savedSyncConfig,
+            // Ensure valid Azure provider and endpoint are always used if not explicitly overridden with a valid custom URL
+            provider: "azure",
+            azureFunctionUrl: savedSyncConfig.azureFunctionUrl || DEFAULT_SYNC_CONFIG.azureFunctionUrl,
+            azureFunctionKey: savedSyncConfig.azureFunctionKey || DEFAULT_SYNC_CONFIG.azureFunctionKey,
+          };
+        }
+
+        if (savedUser && savedUser.vaults?.length > 0 && (!savedSyncConfig?.vaultId || savedSyncConfig.vaultId === "default")) {
+          currentConfig.vaultId = savedUser.vaults[0].vaultId;
+        }
+
+        setSyncConfig(currentConfig);
+        await store.set("sync_config", currentConfig);
+
+        setSyncStats({
+          sentCount: 0,
+          receivedCount: 0,
+          totalCount: loadedPasswords.length,
+          lastSyncedAt: currentConfig.lastSyncedAt,
+        });
+
+        // Trigger Auto-Sync on startup if enabled
+        if (currentConfig.autoSync) {
+          executeSync(loadedPasswords, currentConfig);
         }
       } catch (err) {
         console.error("Failed to load store:", err);
       }
     }
     initStore();
-  }, []);
+  }, [executeSync]);
 
-  const filteredPasswords = passwords.filter(p =>
-    p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    p.email.toLowerCase().includes(searchTerm.toLowerCase())
+  const saveToStore = async (newPasswords: PasswordEntry[]) => {
+    try {
+      const store = await load("passwords.json", { autoSave: true, defaults: {} });
+      await store.set("passwords", newPasswords);
+    } catch (err) {
+      console.error("Failed to save to store:", err);
+    }
+  };
+
+  const handleSaveConfig = async (newConfig: CloudSyncConfig) => {
+    setSyncConfig(newConfig);
+    try {
+      const store = await load("passwords.json", { autoSave: true, defaults: {} });
+      await store.set("sync_config", newConfig);
+    } catch (err) {
+      console.error("Failed to save sync config:", err);
+    }
+  };
+
+  const handleUserChanged = async (user: AccountItem | null) => {
+    setCurrentUser(user);
+    await saveAccountLocally(user);
+
+    if (user && user.vaults?.length > 0) {
+      const newConfig = { ...syncConfig, vaultId: user.vaults[0].vaultId };
+      setSyncConfig(newConfig);
+      await handleSaveConfig(newConfig);
+      executeSync(passwords, newConfig);
+    }
+  };
+
+  const handleUpdateVaultId = async (vaultId: string) => {
+    const newConfig = { ...syncConfig, vaultId };
+    setSyncConfig(newConfig);
+    await handleSaveConfig(newConfig);
+    executeSync(passwords, newConfig);
+  };
+
+  const handleManualSync = async () => {
+    await executeSync(passwords, syncConfig);
+  };
+
+  const filteredPasswords = passwords.filter(
+    (p) =>
+      p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      p.email.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   const toggleVisibility = (id: string, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    setVisiblePasswords(prev => ({
+    setVisiblePasswords((prev) => ({
       ...prev,
-      [id]: !prev[id]
+      [id]: !prev[id],
     }));
   };
 
@@ -82,7 +239,7 @@ export default function App() {
       username: "",
       email: "",
       password: "",
-      customFields: []
+      customFields: [],
     });
     setEditingId(null);
     setIsEditing(true);
@@ -97,36 +254,24 @@ export default function App() {
   };
 
   const handleAddCustomField = () => {
-    setNewEntry(prev => ({
+    setNewEntry((prev) => ({
       ...prev,
-      customFields: [
-        ...(prev.customFields || []),
-        { id: crypto.randomUUID(), name: "", value: "" }
-      ]
+      customFields: [...(prev.customFields || []), { id: crypto.randomUUID(), name: "", value: "" }],
     }));
   };
 
   const handleCustomFieldChange = (id: string, field: "name" | "value", value: string) => {
-    setNewEntry(prev => ({
+    setNewEntry((prev) => ({
       ...prev,
-      customFields: prev.customFields?.map(f => f.id === id ? { ...f, [field]: value } : f)
+      customFields: prev.customFields?.map((f) => (f.id === id ? { ...f, [field]: value } : f)),
     }));
   };
 
   const handleRemoveCustomField = (id: string) => {
-    setNewEntry(prev => ({
+    setNewEntry((prev) => ({
       ...prev,
-      customFields: prev.customFields?.filter(f => f.id !== id)
+      customFields: prev.customFields?.filter((f) => f.id !== id),
     }));
-  };
-
-  const saveToStore = async (newPasswords: PasswordEntry[]) => {
-    try {
-      const store = await load("passwords.json", { autoSave: true, defaults: {} });
-      await store.set("passwords", newPasswords);
-    } catch (err) {
-      console.error("Failed to save to store:", err);
-    }
   };
 
   const handleSaveEntry = () => {
@@ -135,27 +280,37 @@ export default function App() {
       return;
     }
 
+    const now = Date.now();
     const entry: PasswordEntry = {
       id: editingId || crypto.randomUUID(),
       name: newEntry.name || "",
       username: newEntry.username || "",
       email: newEntry.email || "",
       password: newEntry.password || "",
-      customFields: newEntry.customFields || []
+      customFields: newEntry.customFields || [],
+      updatedAt: now,
+      createdAt: editingId ? undefined : now,
+      isDeleted: false,
     };
 
-    let newPasswords;
+    let newPasswords: PasswordEntry[];
     if (editingId) {
-      newPasswords = passwords.map(p => p.id === editingId ? entry : p);
+      newPasswords = passwords.map((p) => (p.id === editingId ? { ...p, ...entry } : p));
     } else {
       newPasswords = [...passwords, entry];
     }
-    
+
     setPasswords(newPasswords);
     saveToStore(newPasswords);
-    
+    setHasUnsyncedChanges(true);
+
     setIsEditing(false);
     setIsModalOpen(false);
+
+    // Auto-sync changes if enabled
+    if (syncConfig.autoSync) {
+      executeSync(newPasswords, syncConfig);
+    }
   };
 
   const handleDeleteEntry = () => {
@@ -165,55 +320,179 @@ export default function App() {
 
   const confirmDelete = () => {
     if (!editingId) return;
-    const newPasswords = passwords.filter(p => p.id !== editingId);
+    const deletedEntry = passwords.find((p) => p.id === editingId);
+    const newPasswords = passwords.filter((p) => p.id !== editingId);
+
     setPasswords(newPasswords);
     saveToStore(newPasswords);
-    
+    setHasUnsyncedChanges(true);
+
     setIsDeleteConfirmOpen(false);
     setIsEditing(false);
     setIsModalOpen(false);
+
+    if (syncConfig.autoSync && deletedEntry) {
+      // Send tombstone payload to ensure deletion syncs with Cosmos DB
+      const tombstone: PasswordEntry = {
+        ...deletedEntry,
+        isDeleted: true,
+        updatedAt: Date.now(),
+        deletedAt: Date.now(),
+      };
+      executeSync([...newPasswords, tombstone], syncConfig);
+    }
   };
 
-  const inputClasses = (isEditMode: boolean) => 
+  const inputClasses = (isEditMode: boolean) =>
     `w-full bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 outline-none transition-all text-sm ${
-      isEditMode 
-        ? "focus:ring-2 focus:ring-emerald-500/50 hover:bg-neutral-900/80" 
+      isEditMode
+        ? "focus:ring-2 focus:ring-emerald-500/50 hover:bg-neutral-900/80"
         : "cursor-copy hover:border-emerald-500/50 focus:border-emerald-500/50"
     }`;
 
-  const renderCopyIndicator = (fieldName: string) => (
+  const renderCopyIndicator = (fieldName: string) =>
     copiedField === fieldName && (
       <span className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-emerald-400 font-medium flex items-center gap-1">
         <Check className="w-3 h-3" /> Copied
       </span>
-    )
-  );
+    );
 
   return (
     <div className="min-h-screen bg-neutral-950 text-neutral-50 flex flex-col font-sans selection:bg-neutral-800">
       {/* Titlebar / Drag region for Tauri */}
-      <div data-tauri-drag-region className="h-8 w-full bg-neutral-900 border-b border-neutral-800 flex items-center px-4 shrink-0 shadow-sm relative z-50">
-        <Shield className="w-4 h-4 text-emerald-500 mr-2 pointer-events-none" />
-        <span className="text-xs font-medium text-neutral-400 pointer-events-none">Password Manager</span>
+      <div
+        data-tauri-drag-region
+        className="h-9 w-full bg-neutral-900 border-b border-neutral-800 flex items-center justify-between px-4 shrink-0 shadow-sm relative z-50"
+      >
+        <div className="flex items-center gap-2">
+          <Shield className="w-4 h-4 text-emerald-500 mr-1 pointer-events-none" />
+          <span className="text-xs font-semibold text-neutral-300 pointer-events-none">Password Vault</span>
+          {currentUser && (
+            <span className="text-[10px] bg-neutral-800 text-neutral-400 px-1.5 py-0.5 rounded border border-neutral-700">
+              Vault: {syncConfig.vaultId}
+            </span>
+          )}
+        </div>
+
+        {/* Right side titlebar tools: User Profile + Sync Status */}
+        <div className="flex items-center gap-2">
+          {/* User Account Pill */}
+          <button
+            onClick={() => setIsAuthModalOpen(true)}
+            className="flex items-center gap-1.5 text-[11px] text-neutral-300 hover:text-white px-2.5 py-1 rounded-lg bg-neutral-800/80 hover:bg-neutral-800 border border-neutral-700/60 transition-all shadow-sm"
+          >
+            <div className="w-3.5 h-3.5 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center font-bold text-[9px]">
+              {currentUser ? currentUser.displayName?.[0]?.toUpperCase() || currentUser.email[0].toUpperCase() : <User className="w-2.5 h-2.5" />}
+            </div>
+            <span>{currentUser ? currentUser.displayName || currentUser.email : "Sign In / Register"}</span>
+          </button>
+
+          {/* Quick Sync Pill in Titlebar */}
+          <button
+            onClick={() => setIsSyncModalOpen(true)}
+            className="flex items-center gap-1.5 text-[11px] text-neutral-400 hover:text-white px-2 py-0.5 rounded hover:bg-neutral-800 transition-colors"
+          >
+            {syncStatus === "syncing" ? (
+              <RefreshCw className="w-3 h-3 text-sky-400 animate-spin" />
+            ) : syncStatus === "error" ? (
+              <AlertCircle className="w-3 h-3 text-rose-400" />
+            ) : (
+              <Cloud className={`w-3 h-3 ${hasUnsyncedChanges ? "text-amber-400" : "text-emerald-400"}`} />
+            )}
+            <span>
+              {syncStatus === "syncing"
+                ? "Syncing Cosmos..."
+                : syncStatus === "error"
+                ? "Sync Error"
+                : hasUnsyncedChanges
+                ? "Unsynced Changes"
+                : "Cosmos DB Synced"}
+            </span>
+          </button>
+        </div>
       </div>
 
       <main className="flex-1 overflow-hidden flex flex-col max-w-4xl mx-auto w-full p-6 gap-6 relative">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-          <div className="flex flex-col gap-2">
-            <h1 className="text-3xl font-semibold tracking-tight text-white flex items-center gap-3">
-              <Key className="w-8 h-8 text-neutral-400" />
-              Passwords
-            </h1>
-            <p className="text-neutral-400 text-sm">Manage your credentials safely.</p>
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-3">
+              <h1 className="text-3xl font-semibold tracking-tight text-white flex items-center gap-3">
+                <Key className="w-8 h-8 text-neutral-400" />
+                Passwords
+              </h1>
+              {currentUser && (
+                <span className="text-xs bg-emerald-950/60 border border-emerald-800 text-emerald-400 px-2.5 py-1 rounded-full font-medium flex items-center gap-1.5">
+                  <FolderLock className="w-3 h-3" />
+                  {currentUser.displayName || currentUser.email}
+                </span>
+              )}
+            </div>
+            <p className="text-neutral-400 text-sm">
+              {currentUser ? `Connected to Azure Cosmos DB (${syncConfig.vaultId})` : "Manage your credentials safely across devices."}
+            </p>
           </div>
 
-          <button
-            onClick={handleAddNew}
-            className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium transition-colors text-sm shadow-sm"
-          >
-            <Plus className="w-4 h-4" />
-            Add Password
-          </button>
+          {/* Header Action Buttons */}
+          <div className="flex items-center gap-2">
+            {/* User Account Button */}
+            {!currentUser && (
+              <button
+                onClick={() => setIsAuthModalOpen(true)}
+                className="flex items-center gap-1.5 border border-emerald-600/40 bg-emerald-950/20 hover:bg-emerald-950/40 text-emerald-400 text-xs sm:text-sm font-medium px-3 py-2 rounded-lg transition-all"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Sign In / Up</span>
+              </button>
+            )}
+
+            {/* Cloud Sync Primary Button */}
+            <div className="relative flex items-center">
+              <button
+                onClick={handleManualSync}
+                disabled={syncStatus === "syncing"}
+                className={`flex items-center gap-2 border text-xs sm:text-sm font-medium px-3.5 py-2 rounded-lg transition-all shadow-sm ${
+                  syncStatus === "syncing"
+                    ? "bg-sky-950/60 border-sky-800 text-sky-300"
+                    : syncStatus === "error"
+                    ? "bg-rose-950/40 border-rose-800 text-rose-300 hover:bg-rose-900/60"
+                    : hasUnsyncedChanges
+                    ? "bg-amber-950/40 border-amber-800 text-amber-300 hover:bg-amber-900/50"
+                    : "bg-neutral-900 border-neutral-800 text-sky-400 hover:bg-neutral-800 hover:text-sky-300"
+                }`}
+                title="Synchronize passwords with Azure Cloud (Send & Receive)"
+              >
+                {syncStatus === "syncing" ? (
+                  <RefreshCw className="w-4 h-4 animate-spin text-sky-400" />
+                ) : syncStatus === "error" ? (
+                  <AlertCircle className="w-4 h-4 text-rose-400" />
+                ) : (
+                  <Cloud className="w-4 h-4 text-sky-400" />
+                )}
+                <span>{syncStatus === "syncing" ? "Syncing..." : "Cloud Sync"}</span>
+
+                {hasUnsyncedChanges && (
+                  <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" title="Pending unsynced local changes" />
+                )}
+              </button>
+
+              <button
+                onClick={() => setIsSyncModalOpen(true)}
+                className="p-2 border-y border-r border-neutral-800 bg-neutral-900 hover:bg-neutral-800 text-neutral-400 hover:text-white rounded-r-lg transition-colors -ml-1 text-xs"
+                title="Cloud Sync Settings & Azure Configuration"
+              >
+                <Settings className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Add Password Button */}
+            <button
+              onClick={handleAddNew}
+              className="flex items-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2 rounded-lg font-medium transition-colors text-sm shadow-sm"
+            >
+              <Plus className="w-4 h-4" />
+              Add Password
+            </button>
+          </div>
         </div>
 
         <div className="relative">
@@ -235,7 +514,7 @@ export default function App() {
               <div
                 key={item.id}
                 onClick={(e) => {
-                  if ((e.target as HTMLElement).closest('button')) return;
+                  if ((e.target as HTMLElement).closest("button")) return;
                   handleOpenExisting(item);
                 }}
                 className="group flex flex-col p-4 bg-neutral-900/50 hover:bg-neutral-900 border border-neutral-800 hover:border-neutral-700 transition-all rounded-xl shadow-sm cursor-pointer"
@@ -246,79 +525,120 @@ export default function App() {
                       <Key className="w-5 h-5 text-neutral-300 group-hover:text-emerald-400 transition-colors" />
                     </div>
                     <div>
-                      <h3 className="font-medium text-neutral-200">{item.name}</h3>
-                      <p className="text-xs text-neutral-500">
-                        {item.username && <span>{item.username}</span>}
-                        {item.username && item.email && <span className="mx-1">•</span>}
-                        {item.email && <span>{item.email}</span>}
-                      </p>
+                      <h3 className="font-medium text-neutral-100 text-base">{item.name}</h3>
+                      <p className="text-sm text-neutral-400">{item.email || item.username || "No username/email"}</p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2 sm:gap-3 bg-neutral-950/50 p-1.5 rounded-lg border border-neutral-800/50 sm:border-none sm:bg-transparent px-3 sm:px-0">
-                    <div className="relative flex-1 sm:w-48">
-                      <input
-                        type={isVisible ? "text" : "password"}
-                        readOnly
-                        value={item.password}
-                        className="w-full bg-transparent text-sm text-neutral-300 outline-none font-mono py-1 px-2 select-all cursor-pointer"
-                        title="Click item to edit / view details"
-                      />
-                    </div>
+                  <div className="flex items-center gap-1.5 self-end sm:self-auto">
                     <button
                       onClick={(e) => toggleVisibility(item.id, e)}
-                      className="p-1.5 text-neutral-500 hover:text-neutral-300 hover:bg-neutral-800 rounded-md transition-colors"
+                      className="p-2 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors"
+                      title={isVisible ? "Hide Password" : "Show Password"}
                     >
                       {isVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                     </button>
                     <button
                       onClick={(e) => copyToClipboard(item.password, e)}
+                      className="p-2 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors"
                       title="Copy Password"
-                      className="p-1.5 text-neutral-500 hover:text-emerald-400 hover:bg-neutral-800 rounded-md transition-colors"
                     >
                       <Copy className="w-4 h-4" />
                     </button>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setNewEntry(item);
+                        setEditingId(item.id);
+                        setIsEditing(true);
+                        setIsModalOpen(true);
+                      }}
+                      className="p-2 text-neutral-400 hover:text-white rounded-lg hover:bg-neutral-800 transition-colors"
+                      title="Edit Password"
+                    >
+                      <Edit2 className="w-4 h-4" />
+                    </button>
                   </div>
+                </div>
+
+                <div className="mt-2 pt-2 border-t border-neutral-800/60 flex items-center justify-between text-xs text-neutral-500">
+                  <div className="font-mono">
+                    {isVisible ? item.password : "••••••••••••••••"}
+                  </div>
+                  {item.customFields && item.customFields.length > 0 && (
+                    <span className="text-[11px] bg-neutral-800/60 px-2 py-0.5 rounded text-neutral-400">
+                      {item.customFields.length} custom {item.customFields.length === 1 ? "field" : "fields"}
+                    </span>
+                  )}
                 </div>
               </div>
             );
           })}
 
           {filteredPasswords.length === 0 && (
-            <div className="text-center py-12">
-              <Key className="w-12 h-12 text-neutral-800 mx-auto mb-3" />
-              <p className="text-neutral-500">
-                {searchTerm ? "No passwords match your search." : "Your vault is empty. Add a new password to get started."}
+            <div className="flex flex-col items-center justify-center p-12 text-center border border-dashed border-neutral-800 rounded-xl bg-neutral-900/20">
+              <Key className="w-12 h-12 text-neutral-600 mb-3" />
+              <h3 className="text-lg font-medium text-neutral-300 mb-1">No Passwords Found</h3>
+              <p className="text-neutral-500 text-sm max-w-sm mb-4">
+                {searchTerm
+                  ? "No credentials match your search criteria."
+                  : "You haven't added any passwords yet or synced from Azure Cosmos DB."}
               </p>
+              <button
+                onClick={handleAddNew}
+                className="flex items-center gap-2 bg-neutral-800 hover:bg-neutral-700 text-neutral-200 px-4 py-2 rounded-lg text-sm font-medium transition-colors border border-neutral-700"
+              >
+                <Plus className="w-4 h-4" />
+                Add First Password
+              </button>
             </div>
           )}
         </div>
       </main>
 
-      {/* View/Edit Password Modal */}
+      {/* Auth / Account Management Modal */}
+      <AuthModal
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        currentUser={currentUser}
+        onUserChanged={handleUserChanged}
+        syncConfig={syncConfig}
+        onUpdateVaultId={handleUpdateVaultId}
+      />
+
+      {/* Cloud Sync Settings Modal */}
+      <CloudSyncModal
+        isOpen={isSyncModalOpen}
+        onClose={() => setIsSyncModalOpen(false)}
+        config={syncConfig}
+        onSaveConfig={handleSaveConfig}
+        onTriggerSync={handleManualSync}
+        status={syncStatus}
+        stats={syncStats}
+        errorMessage={syncErrorMessage}
+      />
+
+      {/* Add / Edit / View Password Modal */}
       {isModalOpen && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
-            <div className="flex items-center justify-between p-4 border-b border-neutral-800 bg-neutral-900">
-              <h2 className="text-lg font-medium text-white">
-                {editingId ? (isEditing ? "Edit Password" : "Password Details") : "Add New Password"}
-              </h2>
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
+            <div className="p-5 border-b border-neutral-800 flex items-center justify-between bg-neutral-950/40">
               <div className="flex items-center gap-2">
-                {editingId && !isEditing && (
-                  <>
-                    <button
-                      onClick={handleDeleteEntry}
-                      className="p-1.5 text-neutral-400 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-1.5 px-3 text-sm font-medium"
-                    >
-                      <Trash2 className="w-4 h-4" /> Delete
-                    </button>
-                    <button
-                      onClick={() => setIsEditing(true)}
-                      className="p-1.5 text-neutral-400 hover:text-white hover:bg-neutral-800 rounded-lg transition-colors flex items-center gap-1.5 px-3 text-sm font-medium"
-                    >
-                      <Edit2 className="w-4 h-4" /> Edit
-                    </button>
-                  </>
+                <div className="w-8 h-8 rounded-lg bg-neutral-800 flex items-center justify-center text-neutral-300">
+                  <Key className="w-4 h-4" />
+                </div>
+                <h2 className="text-lg font-medium text-white">
+                  {isEditing ? (editingId ? "Edit Password" : "New Password") : newEntry.name || "Password Details"}
+                </h2>
+              </div>
+              <div className="flex items-center gap-2">
+                {!isEditing && (
+                  <button
+                    onClick={() => setIsEditing(true)}
+                    className="flex items-center gap-1.5 text-xs text-neutral-400 hover:text-white bg-neutral-800 hover:bg-neutral-700 px-3 py-1.5 rounded-lg transition-colors"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" /> Edit
+                  </button>
                 )}
                 <button
                   onClick={() => setIsModalOpen(false)}
@@ -329,142 +649,163 @@ export default function App() {
               </div>
             </div>
 
-            <div className="p-4 overflow-y-auto flex-1 flex flex-col gap-4">
-              <div className="flex flex-col gap-1.5 relative">
-                <label className="text-sm font-medium text-neutral-400">App / Website Name {isEditing && "*"}</label>
+            <div className="p-6 overflow-y-auto flex-1 flex flex-col gap-4">
+              {/* App / Website Name */}
+              <div>
+                <label className="block text-xs font-medium text-neutral-400 mb-1.5">App / Website Name *</label>
                 <div className="relative">
                   <input
                     type="text"
-                    autoFocus={isEditing && !editingId}
-                    readOnly={!isEditing}
-                    value={newEntry.name}
-                    onClick={() => !isEditing && copyToClipboard(newEntry.name || "", undefined, "name")}
-                    onChange={e => isEditing && setNewEntry({ ...newEntry, name: e.target.value })}
+                    disabled={!isEditing}
+                    value={newEntry.name || ""}
+                    onChange={(e) => setNewEntry({ ...newEntry, name: e.target.value })}
+                    placeholder="e.g. GitHub, Netflix, Google"
                     className={inputClasses(isEditing)}
-                    placeholder="e.g. Google, GitHub, Netflix"
                   />
-                  {!isEditing && renderCopyIndicator("name")}
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="flex flex-col gap-1.5 relative">
-                  <label className="text-sm font-medium text-neutral-400">Username</label>
-                  <div className="relative">
-                    <input
-                      type="text"
-                      readOnly={!isEditing}
-                      value={newEntry.username}
-                      onClick={() => !isEditing && copyToClipboard(newEntry.username || "", undefined, "username")}
-                      onChange={e => isEditing && setNewEntry({ ...newEntry, username: e.target.value })}
-                      className={inputClasses(isEditing)}
-                      placeholder="johndoe123"
-                    />
-                    {!isEditing && renderCopyIndicator("username")}
-                  </div>
-                </div>
-                <div className="flex flex-col gap-1.5 relative">
-                  <label className="text-sm font-medium text-neutral-400">Email</label>
-                  <div className="relative">
-                    <input
-                      type="email"
-                      readOnly={!isEditing}
-                      value={newEntry.email}
-                      onClick={() => !isEditing && copyToClipboard(newEntry.email || "", undefined, "email")}
-                      onChange={e => isEditing && setNewEntry({ ...newEntry, email: e.target.value })}
-                      className={inputClasses(isEditing)}
-                      placeholder="john@example.com"
-                    />
-                    {!isEditing && renderCopyIndicator("email")}
-                  </div>
-                </div>
-              </div>
-
-              <div className="flex flex-col gap-1.5 relative">
-                <label className="text-sm font-medium text-neutral-400">Password {isEditing && "*"}</label>
+              {/* Username */}
+              <div>
+                <label className="block text-xs font-medium text-neutral-400 mb-1.5">Username</label>
                 <div className="relative">
                   <input
                     type="text"
-                    readOnly={!isEditing}
-                    value={newEntry.password}
-                    onClick={() => !isEditing && copyToClipboard(newEntry.password || "", undefined, "password")}
-                    onChange={e => isEditing && setNewEntry({ ...newEntry, password: e.target.value })}
-                    className={`${inputClasses(isEditing)} font-mono`}
-                    placeholder="SuperSecretP@ssw0rd!"
+                    disabled={!isEditing}
+                    value={newEntry.username || ""}
+                    onChange={(e) => setNewEntry({ ...newEntry, username: e.target.value })}
+                    placeholder="e.g. johndoe"
+                    onClick={() => !isEditing && copyToClipboard(newEntry.username || "", undefined, "username")}
+                    className={inputClasses(isEditing)}
                   />
+                  {!isEditing && renderCopyIndicator("username")}
+                </div>
+              </div>
+
+              {/* Email */}
+              <div>
+                <label className="block text-xs font-medium text-neutral-400 mb-1.5">Email</label>
+                <div className="relative">
+                  <input
+                    type="email"
+                    disabled={!isEditing}
+                    value={newEntry.email || ""}
+                    onChange={(e) => setNewEntry({ ...newEntry, email: e.target.value })}
+                    placeholder="e.g. john@example.com"
+                    onClick={() => !isEditing && copyToClipboard(newEntry.email || "", undefined, "email")}
+                    className={inputClasses(isEditing)}
+                  />
+                  {!isEditing && renderCopyIndicator("email")}
+                </div>
+              </div>
+
+              {/* Password */}
+              <div>
+                <label className="block text-xs font-medium text-neutral-400 mb-1.5">Password *</label>
+                <div className="relative">
+                  <input
+                    type={isEditing ? "text" : visiblePasswords["modal"] ? "text" : "password"}
+                    disabled={!isEditing}
+                    value={newEntry.password || ""}
+                    onChange={(e) => setNewEntry({ ...newEntry, password: e.target.value })}
+                    placeholder="Enter password"
+                    onClick={() => !isEditing && copyToClipboard(newEntry.password || "", undefined, "password")}
+                    className={`${inputClasses(isEditing)} font-mono pr-20`}
+                  />
+                  {!isEditing && (
+                    <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={(e) => toggleVisibility("modal", e)}
+                        className="p-1.5 text-neutral-400 hover:text-white rounded hover:bg-neutral-800"
+                      >
+                        {visiblePasswords["modal"] ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => copyToClipboard(newEntry.password || "", e, "password")}
+                        className="p-1.5 text-neutral-400 hover:text-white rounded hover:bg-neutral-800"
+                        title="Copy Password"
+                      >
+                        <Copy className="w-4 h-4" />
+                      </button>
+                    </div>
+                  )}
                   {!isEditing && renderCopyIndicator("password")}
                 </div>
               </div>
 
-              {/* Custom Fields Section */}
-              <div className="border-t border-neutral-800/50 pt-4 mt-2">
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-neutral-300">Additional Fields</span>
+              {/* Custom Fields */}
+              <div className="pt-2 border-t border-neutral-800">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="text-xs font-medium text-neutral-400">Custom Fields</label>
                   {isEditing && (
                     <button
+                      type="button"
                       onClick={handleAddCustomField}
-                      className="text-xs flex items-center gap-1 text-emerald-500 hover:text-emerald-400 transition-colors"
+                      className="text-xs text-emerald-400 hover:text-emerald-300 flex items-center gap-1"
                     >
-                      <ListPlus className="w-4 h-4" /> Add Field
+                      <ListPlus className="w-3.5 h-3.5" /> Add Field
                     </button>
                   )}
                 </div>
 
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2">
                   {newEntry.customFields?.map((field) => (
-                    <div key={field.id} className="flex gap-2 items-start bg-neutral-950/50 p-3 rounded-lg border border-neutral-800/50 relative">
-                      <div className="flex-1 flex flex-col gap-2 relative">
+                    <div key={field.id} className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        disabled={!isEditing}
+                        value={field.name}
+                        onChange={(e) => handleCustomFieldChange(field.id, "name", e.target.value)}
+                        placeholder="Field Name (e.g. PIN, Recovery Key)"
+                        className="w-1/3 bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 text-xs outline-none"
+                      />
+                      <div className="relative flex-1">
                         <input
                           type="text"
-                          readOnly={!isEditing}
-                          value={field.name}
-                          onClick={() => !isEditing && copyToClipboard(field.name || "", undefined, `field-${field.id}-name`)}
-                          onChange={e => isEditing && handleCustomFieldChange(field.id, "name", e.target.value)}
-                          className={`w-full bg-transparent border-b border-neutral-800 text-white pb-1 outline-none transition-all text-xs font-medium placeholder-neutral-600 truncate ${isEditing ? "focus:border-emerald-500/50" : "cursor-copy hover:border-emerald-500/50"}`}
-                          placeholder="Field Name"
+                          disabled={!isEditing}
+                          value={field.value}
+                          onChange={(e) => handleCustomFieldChange(field.id, "value", e.target.value)}
+                          placeholder="Value"
+                          onClick={() => !isEditing && copyToClipboard(field.value, undefined, field.id)}
+                          className={`w-full bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 text-xs outline-none ${
+                            !isEditing ? "cursor-copy" : ""
+                          }`}
                         />
-                        {!isEditing && renderCopyIndicator(`field-${field.id}-name`)}
-                        
-                        <div className="relative">
-                          <input
-                            type="text"
-                            readOnly={!isEditing}
-                            value={field.value}
-                            onClick={() => !isEditing && copyToClipboard(field.value || "", undefined, `field-${field.id}-value`)}
-                            onChange={e => isEditing && handleCustomFieldChange(field.id, "value", e.target.value)}
-                            className={`w-full bg-neutral-900 border border-neutral-800 text-neutral-300 font-mono rounded-md px-2 py-1.5 outline-none transition-all text-sm ${isEditing ? "focus:ring-1 focus:ring-emerald-500/50" : "cursor-copy hover:border-emerald-500/50"}`}
-                            placeholder="Value"
-                          />
-                          {!isEditing && renderCopyIndicator(`field-${field.id}-value`)}
-                        </div>
+                        {!isEditing && renderCopyIndicator(field.id)}
                       </div>
                       {isEditing && (
                         <button
+                          type="button"
                           onClick={() => handleRemoveCustomField(field.id)}
-                          className="p-1.5 text-neutral-500 hover:text-red-400 hover:bg-red-500/10 rounded-md transition-colors mt-0.5"
+                          className="p-2 text-neutral-500 hover:text-red-400 rounded-lg"
                         >
                           <Trash2 className="w-4 h-4" />
                         </button>
                       )}
                     </div>
                   ))}
-                  {newEntry.customFields?.length === 0 && (
-                    <p className="text-xs text-neutral-600 italic">No additional fields.</p>
+                  {(!newEntry.customFields || newEntry.customFields.length === 0) && !isEditing && (
+                    <span className="text-xs text-neutral-500 italic">No custom fields added.</span>
                   )}
                 </div>
               </div>
             </div>
 
-            <div className="p-4 border-t border-neutral-800 bg-neutral-900 flex justify-between gap-3">
-              {isEditing && editingId ? (
+            {/* Modal Actions */}
+            <div className="p-4 border-t border-neutral-800 bg-neutral-950/60 flex items-center justify-between">
+              {editingId ? (
                 <button
                   onClick={handleDeleteEntry}
-                  className="px-4 py-2 text-sm font-medium text-red-500 hover:text-red-400 hover:bg-red-500/10 rounded-lg transition-colors flex items-center gap-2"
+                  className="flex items-center gap-1.5 text-xs text-red-400 hover:text-red-300 hover:bg-red-950/40 border border-red-900/50 px-3 py-2 rounded-lg transition-colors"
                 >
-                  <Trash2 className="w-4 h-4" /> Delete
+                  <Trash2 className="w-3.5 h-3.5" /> Delete
                 </button>
-              ) : <div></div>}
-              
+              ) : (
+                <div />
+              )}
+
               <div className="flex gap-3">
                 <button
                   onClick={() => setIsModalOpen(false)}
@@ -497,10 +838,10 @@ export default function App() {
               </div>
               <h3 className="text-xl font-medium text-white mb-2">Delete Password?</h3>
               <p className="text-neutral-400 text-sm">
-                Are you sure you want to delete this password? This action cannot be undone.
+                Are you sure you want to delete this password? This action cannot be undone and will synchronize across all devices.
               </p>
             </div>
-            
+
             <div className="p-4 border-t border-neutral-800 bg-neutral-950/50 flex gap-3">
               <button
                 onClick={() => setIsDeleteConfirmOpen(false)}
