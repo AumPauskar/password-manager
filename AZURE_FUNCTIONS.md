@@ -164,3 +164,8 @@ Configure these values in the repository's `production` environment:
 
 The environment variable names and local placeholders are listed as 
 `.env.example`.
+
+If deployment reports that it cannot fetch the host key, the ZIP upload may
+still have been accepted but the Function host did not start. Check the
+Function App's Log stream and verify that `AzureWebJobsStorage` contains the
+connection string for the storage account attached to the Function App.

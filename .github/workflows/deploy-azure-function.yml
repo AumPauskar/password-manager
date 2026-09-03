@@ -47,7 +47,9 @@ jobs:
             --settings \
               "COSMOS_DB_CONNECTION_STRING=${{ secrets.COSMOS_DB_CONNECTION_STRING }}" \
               "COSMOS_DB_DATABASE=${{ vars.COSMOS_DB_DATABASE }}" \
-              "AzureWebJobsStorage=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
+              "AzureWebJobsStorage=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}" \
+              "FUNCTIONS_WORKER_RUNTIME=node" \
+              "FUNCTIONS_EXTENSION_VERSION=~4"
 
       - name: Create deployment package
         working-directory: azure-functions
