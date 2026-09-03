@@ -1,82 +1,275 @@
-# Password Manager (Tauri + React + TypeScript)
+# 🔐 Password Vault
 
-This is a modern, minimal Password Manager application built leveraging the following stack:
-- **[Tauri](https://tauri.app/)**: Framework for building tiny, blazing fast binaries for all major desktop platforms.
-- **[React](https://react.dev/) & [Vite](https://vitejs.dev/)**: For lightning-fast frontend UI rendering and development.
-- **[TailwindCSS](https://tailwindcss.com/)**: For beautiful, scalable, and atomic inline styling.
-- **[Lucide React](https://lucide.dev/)**: For clean, modern SVG iconography.
+A modern, cross-platform password manager built with **Tauri v2**, **React 19**, **TypeScript**, and **Vite** — with optional cloud sync via **Azure Cosmos DB**.
 
-## 🚀 Installation & Setup
+---
+
+## 📚 Table of Contents
+
+- [Tech Stack](#-tech-stack)
+- [Project Structure](#-project-structure)
+- [Local Development Setup](#-local-development-setup)
+- [Environment Variables](#-environment-variables)
+- [Building for Each Platform](#-building-for-each-platform)
+  - [Linux](#linux)
+  - [Windows](#windows)
+  - [Android (Mobile)](#android-mobile)
+- [Azure Cloud Sync](#-azure-cloud-sync)
+- [IDE Setup](#-ide-setup)
+
+---
+
+## 🛠 Tech Stack
+
+| Layer | Technology |
+|---|---|
+| Desktop shell | [Tauri v2](https://tauri.app/) (Rust) |
+| Frontend | [React 19](https://react.dev/) + [TypeScript](https://www.typescriptlang.org/) |
+| Build tool | [Vite 7](https://vitejs.dev/) |
+| Styling | [TailwindCSS v3](https://tailwindcss.com/) |
+| Icons | [Lucide React](https://lucide.dev/) |
+| Local persistence | `@tauri-apps/plugin-store` (JSON store) |
+| Cloud sync backend | Azure Functions (Node.js) + Azure Cosmos DB (NoSQL) |
+
+---
+
+## 📁 Project Structure
+
+```
+password-manager/
+├── src/                        # React frontend source
+│   ├── App.tsx                 # Root app component
+│   ├── components/             # UI components (modals, etc.)
+│   ├── services/               # syncService, authService
+│   └── types/                  # TypeScript type definitions
+├── src-tauri/                  # Tauri / Rust backend
+│   ├── src/                    # Rust source (main.rs, lib.rs)
+│   ├── Cargo.toml              # Rust dependencies
+│   └── tauri.conf.json         # Tauri app config
+├── azure-functions/            # Azure Function App (Node.js)
+│   └── src/functions/sync.js   # Sync + Accounts handler
+├── .env.local                  # ⚠️ Local secrets (not committed)
+├── AZURE_SETUP.md              # Full Azure backend setup guide
+└── AZURE_FUNCTIONS.md          # Azure Functions deployment guide
+```
+
+---
+
+## 💻 Local Development Setup
 
 ### Prerequisites
 
-You need a few things set up before starting:
-1. **Node.js** (v18.x or later) and **npm** (or yarn/pnpm).
-2. **Rust** and **Cargo**. Follow the instructions on the [official Rust installation page](https://www.rust-lang.org/tools/install).
-3. **OS-Specific Build Tools:** As Tauri builds native apps, you must have platform-specific C++ build tools installed.
-   - **Windows:** Install the "C++ build tools" or "Desktop development with C++" workload via Visual Studio Installer.
-   - **macOS:** Install Xcode Command Line Tools (`xcode-select --install`).
-   - **Linux**
-      - **Debian based systems:** Install standard build-essential tools (`sudo apt install libwebkit2gtk-4.1-dev build-essential curl wget file libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`).
-      - **Arch based systems:** `sudo pacman -S webkit2gtk-4.1`
+Before you begin, install the following:
 
-### Local Setup
+1. **Node.js** v18 or later — [nodejs.org](https://nodejs.org/)
+2. **Rust & Cargo** — [rustup.rs](https://rustup.rs/)
+3. **Platform build tools** (see [Platform Builds](#-building-for-each-platform) below)
 
-To quickly get the application up and running locally, follow these steps:
+### Steps
 
-1. **Clone the project & Navigate into it**
-   ```bash
-   # assuming you have the source files
-   cd password-manager
-   ```
+```bash
+# 1. Clone the repository
+git clone <repo-url>
+cd password-manager
 
-2. **Install Frontend Dependencies**
-   ```bash
-   npm install
-   ```
+# 2. Install Node dependencies
+npm install
 
-3. **Start the Development Server**
-   To test the web-app interface rapidly on your local browser (port 1420 by default):
-   ```bash
-   npm run dev
-   ```
+# 3. Set up environment variables (see section below)
+cp .env.local.example .env.local   # then fill in your values
 
-4. **Run the Tauri Desktop App**
-   To build and start the application in its native desktop window wrappers:
-   ```bash
-   npm run tauri dev
-   ```
-   > Note: The first time you run this command, Cargo will download and compile all Rust dependencies. This could take a few minutes.
+# 4. Start the Vite dev server (browser preview only)
+npm run dev
 
-## 📦 Building the App
+# 5. Run the full Tauri desktop app
+npm run tauri dev
+```
 
-### Windows
-**Prerequisites:**
-- Visual Studio 2022 C++ Build Tools (or the "Desktop development with C++" workload in Visual Studio Installer).
-- [WebView2 Runtime](https://developer.microsoft.com/en-us/microsoft-edge/webview2/) (usually pre-installed on Windows 11).
+> **Note:** The first `tauri dev` run will compile Rust dependencies via Cargo. This can take **3–10 minutes** on the first run; subsequent runs are fast.
 
-**Build Command:**
+---
+
+## 🔑 Environment Variables
+
+Secrets are stored in a **`.env.local`** file at the project root. This file is excluded from git via `*.local` in `.gitignore` and must **never be committed**.
+
+Create `.env.local` with the following variables:
+
+```env
+VITE_AZURE_FUNCTION_URL=https://<your-function-app>.azurewebsites.net/api/sync
+VITE_AZURE_FUNCTION_KEY=<your-azure-function-key>
+```
+
+| Variable | Description |
+|---|---|
+| `VITE_AZURE_FUNCTION_URL` | The full URL to your deployed Azure Function `sync` endpoint |
+| `VITE_AZURE_FUNCTION_KEY` | The API key for your Azure Function (found in Azure Portal → Function → Get Function URL) |
+
+> Variables must be prefixed with `VITE_` to be exposed to the frontend by Vite.  
+> Share these values with team members out-of-band (e.g. a shared password manager or secret vault).
+
+---
+
+## 📦 Building for Each Platform
+
+### Linux
+
+#### Prerequisites
+
+Install the required system libraries for your distro:
+
+**Debian / Ubuntu:**
+```bash
+sudo apt update
+sudo apt install -y \
+  libwebkit2gtk-4.1-dev \
+  build-essential \
+  curl wget file \
+  libssl-dev \
+  libgtk-3-dev \
+  libayatana-appindicator3-dev \
+  librsvg2-dev
+```
+
+**Arch / Manjaro:**
+```bash
+sudo pacman -S webkit2gtk-4.1 base-devel
+```
+
+**Fedora / RHEL:**
+```bash
+sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file \
+  libappindicator-gtk3-devel librsvg2-devel
+sudo dnf group install "C Development Tools and Libraries"
+```
+
+#### Build
+
 ```bash
 npm run tauri build
 ```
-This command will create an executable (`.exe`) and MSI installer in the `src-tauri/target/release/bundle/` directory.
 
-### Android
-**Prerequisites:**
-- **Android Studio**: Install the Android SDK, NDK, and CMake via the SDK Manager.
-- **Java Development Kit (JDK)**: JDK 17 or later.
-- **Set Environment Variables**: Ensure `ANDROID_HOME` and `NDK_HOME` are set in your environment variables.
-- **Rust Android Targets**: Add the necessary Rust targets by running:
-  ```bash
-  rustup target add aarch64-linux-android armv7-linux-androideabi i686-linux-android x86_64-linux-android
-  ```
+Output artifacts will be in `src-tauri/target/release/bundle/`:
+- `.deb` — Debian package
+- `.rpm` — RPM package (if `rpm` tools are present)
+- `.AppImage` — portable executable (no install required)
 
-**Build Command:**
+---
+
+### Windows
+
+#### Prerequisites
+
+1. **Visual Studio 2022** with the **"Desktop development with C++"** workload  
+   *(or standalone [C++ Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/))*
+2. **WebView2 Runtime** — pre-installed on Windows 10 (1803+) and Windows 11.  
+   If missing, download from [Microsoft WebView2](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
+3. Rust target for Windows (usually installed by default with `rustup`):
+   ```powershell
+   rustup target add x86_64-pc-windows-msvc
+   ```
+
+#### Build
+
+```powershell
+npm run tauri build
+```
+
+Output artifacts in `src-tauri\target\release\bundle\`:
+- `.exe` — standalone NSIS installer
+- `.msi` — Windows Installer package
+
+> **Cross-compiling** Windows binaries from Linux/macOS is not officially supported. Build on a Windows machine or use a Windows CI runner.
+
+---
+
+### Android (Mobile)
+
+#### Prerequisites
+
+1. **Android Studio** — [developer.android.com/studio](https://developer.android.com/studio)
+   - In SDK Manager, install:
+     - **Android SDK** (API level 24 or higher recommended)
+     - **Android NDK** (latest stable)
+     - **CMake**
+
+2. **Java Development Kit (JDK) 17 or later**
+   ```bash
+   # Ubuntu/Debian
+   sudo apt install openjdk-17-jdk
+   ```
+
+3. **Set environment variables** (add to `~/.bashrc` or `~/.zshrc`):
+   ```bash
+   export JAVA_HOME=/usr/lib/jvm/java-17-openjdk-amd64
+   export ANDROID_HOME=$HOME/Android/Sdk
+   export NDK_HOME=$ANDROID_HOME/ndk/$(ls $ANDROID_HOME/ndk | tail -1)
+   export PATH=$PATH:$ANDROID_HOME/emulator:$ANDROID_HOME/platform-tools
+   ```
+
+4. **Add Rust Android targets:**
+   ```bash
+   rustup target add \
+     aarch64-linux-android \
+     armv7-linux-androideabi \
+     i686-linux-android \
+     x86_64-linux-android
+   ```
+
+5. **Initialize the Tauri Android project** (first time only):
+   ```bash
+   npm run tauri android init
+   ```
+
+#### Development (on a connected device or emulator)
+
+```bash
+npm run tauri android dev
+```
+
+#### Build (release APK / AAB)
+
 ```bash
 npm run tauri android build
 ```
-This command will compile and build an APK (and App Bundle).
 
-## 🛠 Recommended IDE Setup
+Output in `src-tauri/gen/android/app/build/outputs/`:
+- `apk/` — APK files for direct installation
+- `bundle/` — AAB (Android App Bundle) for Play Store submission
 
-- [VS Code](https://code.visualstudio.com/) + [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) + [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer)
+> **Signing:** For a production release, configure a keystore in `src-tauri/gen/android/app/build.gradle`. See [Tauri Android docs](https://tauri.app/distribute/sign/android/) for details.
+
+---
+
+## ☁️ Azure Cloud Sync
+
+This app supports optional end-to-end cloud sync via Azure. See the dedicated guides:
+
+- **[AZURE_SETUP.md](./AZURE_SETUP.md)** — How to provision Cosmos DB and the Function App in Azure Portal
+- **[AZURE_FUNCTIONS.md](./AZURE_FUNCTIONS.md)** — How to deploy the `azure-functions/` code to your Function App
+
+### Quick summary
+
+| Component | Service |
+|---|---|
+| Sync API | Azure Functions (Node.js, Consumption plan) |
+| Database | Azure Cosmos DB for NoSQL (Serverless) |
+| Storage fallback | Azure Blob Storage |
+
+The sync function handles:
+- Password upsert / merge (conflict resolution by `updatedAt` timestamp)
+- Soft deletes via tombstone entries (`isDeleted: true`)
+- Account registration, login, and vault ID management
+
+---
+
+## 🧩 IDE Setup
+
+**Recommended:** [VS Code](https://code.visualstudio.com/) with these extensions:
+
+| Extension | Purpose |
+|---|---|
+| [Tauri](https://marketplace.visualstudio.com/items?itemName=tauri-apps.tauri-vscode) | Tauri project support |
+| [rust-analyzer](https://marketplace.visualstudio.com/items?itemName=rust-lang.rust-analyzer) | Rust IntelliSense |
+| [ESLint](https://marketplace.visualstudio.com/items?itemName=dbaeumer.vscode-eslint) | TypeScript/JS linting |
+| [Tailwind CSS IntelliSense](https://marketplace.visualstudio.com/items?itemName=bradlc.vscode-tailwindcss) | Class autocomplete |
