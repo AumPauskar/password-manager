@@ -153,12 +153,13 @@ The workflow at `.github/workflows/deploy-azure-function.yml` deploys the
 `azure-functions` directory whenever changes are pushed to `main`, and can
 also be started manually from the Actions tab.
 
-Configure these values in the repository's environment:
+Configure these values in the repository's `production` environment:
 
-- Secret `AZURE_FUNCTIONAPP_PUBLISH_PROFILE`: the Function App's downloaded publish profile XML.
+- Secret `AZURE_CREDENTIALS`: Azure service principal credentials in the JSON format produced by `az ad sp create-for-rbac --sdk-auth`.
 - Secret `COSMOS_DB_CONNECTION_STRING`: the Cosmos DB connection string.
 - Secret `AZURE_STORAGE_CONNECTION_STRING`: the storage connection string used by `AzureWebJobsStorage`.
 - Variable `AZURE_FUNCTION_APP_NAME`: the Azure Function App name.
+- Variable `AZURE_RESOURCE_GROUP`: the Azure resource group containing the Function App.
 - Variable `COSMOS_DB_DATABASE`: usually `PasswordVaultDB`.
 
 The environment variable names and local placeholders are listed as 

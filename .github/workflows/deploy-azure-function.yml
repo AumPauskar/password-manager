@@ -34,13 +34,28 @@ jobs:
         working-directory: azure-functions
         run: npm ci --omit=dev
 
-      - name: Deploy to Azure Functions
-        uses: Azure/functions-action@v1
+      - name: Log in to Azure
+        uses: azure/login@v2
         with:
-          app-name: ${{ vars.AZURE_FUNCTION_APP_NAME }}
-          package: azure-functions
-          publish-profile: ${{ secrets.AZURE_FUNCTIONAPP_PUBLISH_PROFILE }}
-          app-settings: |
-            COSMOS_DB_CONNECTION_STRING=${{ secrets.COSMOS_DB_CONNECTION_STRING }}
-            COSMOS_DB_DATABASE=${{ vars.COSMOS_DB_DATABASE }}
-            AzureWebJobsStorage=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      - name: Configure Azure Function app settings
+        run: |
+          az functionapp config appsettings set \
+            --name "${{ vars.AZURE_FUNCTION_APP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --settings \
+              "COSMOS_DB_CONNECTION_STRING=${{ secrets.COSMOS_DB_CONNECTION_STRING }}" \
+              "COSMOS_DB_DATABASE=${{ vars.COSMOS_DB_DATABASE }}" \
+              "AzureWebJobsStorage=${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}"
+
+      - name: Create deployment package
+        working-directory: azure-functions
+        run: zip -qr ../azure-functions.zip .
+
+      - name: Deploy to Azure Functions
+        run: |
+          az functionapp deployment source config-zip \
+            --name "${{ vars.AZURE_FUNCTION_APP_NAME }}" \
+            --resource-group "${{ vars.AZURE_RESOURCE_GROUP }}" \
+            --src azure-functions.zip
