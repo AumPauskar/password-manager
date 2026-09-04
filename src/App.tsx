@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { load } from "@tauri-apps/plugin-store";
 import "./App.css";
-import { PasswordEntry, CloudSyncConfig, SyncStatus, SyncStats, AccountItem } from "./types/sync";
+import { PasswordEntry, CloudSyncConfig, SyncStatus, SyncStats, AccountItem, PasswordProfile } from "./types/sync";
 import { performCloudSync } from "./services/syncService";
 import { getLocalAccount, saveAccountLocally } from "./services/authService";
 import CloudSyncModal from "./components/CloudSyncModal";
@@ -40,6 +40,10 @@ const DEFAULT_SYNC_CONFIG: CloudSyncConfig = {
 
 export default function App() {
   const [passwords, setPasswords] = useState<PasswordEntry[]>([]);
+  const [profiles, setProfiles] = useState<PasswordProfile[]>([]);
+  const [currentProfileId, setCurrentProfileId] = useState<string>("");
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [newProfileName, setNewProfileName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [visiblePasswords, setVisiblePasswords] = useState<Record<string, boolean>>({});
 
@@ -116,6 +120,7 @@ export default function App() {
       try {
         const store = await load("passwords.json", { autoSave: true, defaults: {} });
         const savedPasswords = await store.get<PasswordEntry[]>("passwords");
+        const savedProfiles = await store.get<PasswordProfile[]>("profiles");
         const savedSyncConfig = await store.get<CloudSyncConfig>("sync_config");
         const savedUser = await getLocalAccount();
 
@@ -123,11 +128,14 @@ export default function App() {
           setCurrentUser(savedUser);
         }
 
-        let loadedPasswords: PasswordEntry[] = [];
-        if (savedPasswords) {
-          loadedPasswords = savedPasswords;
-          setPasswords(savedPasswords);
-        }
+        const personal: PasswordProfile = { id: crypto.randomUUID(), name: "Personal", passwords: savedPasswords || [], createdAt: Date.now() };
+        const loadedProfiles = savedProfiles?.length ? savedProfiles : [personal];
+        const activeProfile = loadedProfiles[0];
+        setProfiles(loadedProfiles);
+        setCurrentProfileId(activeProfile.id);
+        const loadedPasswords = activeProfile.passwords;
+        setPasswords(loadedPasswords);
+        await store.set("profiles", loadedProfiles);
 
         let currentConfig = { ...DEFAULT_SYNC_CONFIG };
         if (savedSyncConfig) {
@@ -170,9 +178,50 @@ export default function App() {
     try {
       const store = await load("passwords.json", { autoSave: true, defaults: {} });
       await store.set("passwords", newPasswords);
+      const updatedProfiles = profiles.map((profile) => profile.id === currentProfileId ? { ...profile, passwords: newPasswords } : profile);
+      setProfiles(updatedProfiles);
+      await store.set("profiles", updatedProfiles);
     } catch (err) {
       console.error("Failed to save to store:", err);
     }
+  };
+
+  const switchProfile = async (profile: PasswordProfile) => {
+    setCurrentProfileId(profile.id);
+    setPasswords(profile.passwords);
+    setSearchTerm("");
+    setVisiblePasswords({});
+    await storeProfiles(profiles.map((item) => item.id === profile.id ? profile : item));
+  };
+
+  const createProfile = async () => {
+    const name = newProfileName.trim();
+    if (!name) return;
+    const profile = { id: crypto.randomUUID(), name, passwords: [], createdAt: Date.now() };
+    const updated = [...profiles, profile];
+    setProfiles(updated);
+    setNewProfileName("");
+    setIsProfileModalOpen(false);
+    await storeProfiles(updated);
+    setCurrentProfileId(profile.id);
+    setPasswords([]);
+    setSearchTerm("");
+  };
+
+  const storeProfiles = async (items: PasswordProfile[]) => {
+    const store = await load("passwords.json", { autoSave: true, defaults: {} });
+    await store.set("profiles", items);
+  };
+
+  const deleteCurrentProfile = async () => {
+    if (profiles.length <= 1) { alert("You must keep at least one profile."); return; }
+    if (!confirm(`Delete the profile \"${profiles.find(p => p.id === currentProfileId)?.name}\" and all its passwords?`)) return;
+    const updated = profiles.filter(p => p.id !== currentProfileId);
+    setProfiles(updated);
+    await storeProfiles(updated);
+    setCurrentProfileId(updated[0].id);
+    setPasswords(updated[0].passwords);
+    setSearchTerm("");
   };
 
   const handleSaveConfig = async (newConfig: CloudSyncConfig) => {
@@ -412,6 +461,18 @@ export default function App() {
       </div>
 
       <main className="flex-1 overflow-hidden flex flex-col max-w-4xl mx-auto w-full p-6 gap-6 relative">
+        <div className="flex items-center gap-2 overflow-x-auto pb-1">
+          <span className="text-xs text-neutral-500 shrink-0">Profiles</span>
+          {profiles.map((profile) => (
+            <button key={profile.id} onClick={() => switchProfile(profile)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs transition-colors shrink-0 ${profile.id === currentProfileId ? "bg-emerald-950/50 border-emerald-700 text-emerald-300" : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"}`}>
+              <FolderLock className="w-3.5 h-3.5" /> {profile.name}
+            </button>
+          ))}
+          <button onClick={() => setIsProfileModalOpen(true)} className="flex items-center gap-1 px-3 py-1.5 rounded-lg border border-dashed border-neutral-700 text-xs text-neutral-400 hover:text-white hover:border-neutral-500 shrink-0">
+            <Plus className="w-3.5 h-3.5" /> New profile
+          </button>
+          {profiles.length > 1 && <button onClick={deleteCurrentProfile} className="p-1.5 text-neutral-500 hover:text-rose-400" title="Delete current profile"><Trash2 className="w-3.5 h-3.5" /></button>}
+        </div>
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-3">
@@ -593,6 +654,17 @@ export default function App() {
           )}
         </div>
       </main>
+
+      {isProfileModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+          <div className="bg-neutral-900 border border-neutral-800 rounded-2xl shadow-2xl w-full max-w-sm p-6">
+            <div className="flex items-center justify-between mb-5"><h2 className="text-lg font-medium">New profile</h2><button onClick={() => setIsProfileModalOpen(false)}><X className="w-5 h-5 text-neutral-400" /></button></div>
+            <label className="block text-xs text-neutral-400 mb-1.5">Profile name</label>
+            <input autoFocus value={newProfileName} onChange={e => setNewProfileName(e.target.value)} onKeyDown={e => e.key === "Enter" && createProfile()} placeholder="e.g. Work, Family" className="w-full bg-neutral-950 border border-neutral-800 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-emerald-500/50" />
+            <div className="flex justify-end gap-2 mt-5"><button onClick={() => setIsProfileModalOpen(false)} className="px-3 py-2 text-sm text-neutral-400">Cancel</button><button onClick={createProfile} className="px-4 py-2 text-sm bg-emerald-600 hover:bg-emerald-500 rounded-lg">Create profile</button></div>
+          </div>
+        </div>
+      )}
 
       {/* Auth / Account Management Modal */}
       <AuthModal

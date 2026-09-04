@@ -18,6 +18,13 @@ export type PasswordEntry = {
   deletedAt?: number | null;
 };
 
+export type PasswordProfile = {
+  id: string;
+  name: string;
+  passwords: PasswordEntry[];
+  createdAt: number;
+};
+
 export type AccountAuth = {
   passwordHash?: string;
   authProvider?: "local" | "azure_ad" | "google";
