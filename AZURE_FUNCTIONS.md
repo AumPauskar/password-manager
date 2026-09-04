@@ -162,8 +162,10 @@ Configure these values in the repository's `production` environment:
 - Variable `AZURE_RESOURCE_GROUP`: the Azure resource group containing the Function App.
 - Variable `COSMOS_DB_DATABASE`: usually `PasswordVaultDB`.
 
-The environment variable names and local placeholders are listed as 
-`.env.example`.
+The environment variable names and local placeholders are listed as
+`.env.example`. For Flex Consumption apps, do not add the legacy
+`FUNCTIONS_WORKER_RUNTIME` or `FUNCTIONS_EXTENSION_VERSION` settings; Azure
+manages the runtime from the Function App's Flex configuration.
 
 If deployment reports that it cannot fetch the host key, the ZIP upload may
 still have been accepted but the Function host did not start. Check the
