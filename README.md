@@ -136,6 +136,22 @@ sudo apt install -y \
 sudo pacman -S webkit2gtk-4.1 base-devel
 ```
 
+To build a native Arch package, first build the release binary:
+
+```bash
+npm install
+npx tauri build --no-bundle
+```
+
+Tauri currently does not provide a `pacman` bundle target, so create a `PKGBUILD` that installs the binary from `src-tauri/target/release/tauri-apppassword-manager`, then build it with:
+
+```bash
+makepkg --cleanbuild --force
+sudo pacman -U ./password-manager-0.1.0-1-x86_64.pkg.tar.zst
+```
+
+The resulting Arch package is a `.pkg.tar.zst` file in the same directory as the `PKGBUILD`.
+
 **Fedora / RHEL:**
 ```bash
 sudo dnf install webkit2gtk4.1-devel openssl-devel curl wget file \
