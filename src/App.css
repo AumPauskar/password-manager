@@ -44,3 +44,11 @@
     @apply bg-neutral-950 text-neutral-50;
   }
 }
+
+/* Keep the app chrome clear of the Android/iOS status bar without changing desktop spacing. */
+@media (max-width: 640px) {
+  [data-tauri-drag-region] {
+    height: calc(2.25rem + env(safe-area-inset-top));
+    padding-top: env(safe-area-inset-top);
+  }
+}

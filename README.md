@@ -249,6 +249,11 @@ npm run tauri android dev
 npm run tauri android build
 ```
 
+- If you want to build a debug version without needing a valid signature
+   ```bash
+   npm run tauri android build -- --debug --target aarch64
+   ```
+
 Output in `src-tauri/gen/android/app/build/outputs/`:
 - `apk/` — APK files for direct installation
 - `bundle/` — AAB (Android App Bundle) for Play Store submission
