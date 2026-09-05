@@ -6,6 +6,8 @@ export type CustomField = {
 
 export type PasswordEntry = {
   id: string;
+  /** The profile that owns this entry. Kept on the entry so moving it syncs safely. */
+  profileId?: string;
   name: string;
   username: string;
   email: string;
@@ -23,6 +25,7 @@ export type PasswordProfile = {
   name: string;
   passwords: PasswordEntry[];
   createdAt: number;
+  updatedAt?: number;
 };
 
 export type AccountAuth = {
@@ -91,6 +94,7 @@ export type SyncStats = {
 export type SyncResult = {
   success: boolean;
   passwords: PasswordEntry[];
+  profiles: PasswordProfile[];
   stats: SyncStats;
   error?: string;
   backend?: string;

@@ -84,23 +84,25 @@ export default function App() {
 
   // Trigger sync helper
   const executeSync = useCallback(
-    async (currentPasswords: PasswordEntry[], config: CloudSyncConfig) => {
+    async (currentProfiles: PasswordProfile[], config: CloudSyncConfig) => {
       setSyncStatus("syncing");
       setSyncErrorMessage(undefined);
 
-      const result = await performCloudSync(currentPasswords, config);
+      const result = await performCloudSync(currentProfiles, config);
 
       if (result.success) {
-        setPasswords(result.passwords);
+        const activeProfile = result.profiles.find(profile => profile.id === currentProfileIdRef.current) || result.profiles[0];
+        setPasswords(activeProfile?.passwords || []);
         setSyncStats(result.stats);
         setHasUnsyncedChanges(false);
 
-        // Sync belongs to the active profile. Keep the profile record in sync too;
-        // otherwise the next profile switch or app restart loses the synced data.
-        const updatedProfiles = profilesRef.current.map((profile) =>
-          profile.id === currentProfileIdRef.current ? { ...profile, passwords: result.passwords } : profile
-        );
+        const updatedProfiles = result.profiles;
+        profilesRef.current = updatedProfiles;
         setProfiles(updatedProfiles);
+        if (activeProfile) {
+          currentProfileIdRef.current = activeProfile.id;
+          setCurrentProfileId(activeProfile.id);
+        }
 
         const updatedConfig = { ...config, lastSyncedAt: result.stats.lastSyncedAt };
         setSyncConfig(updatedConfig);
@@ -108,7 +110,7 @@ export default function App() {
         // Save updated passwords & config to persistent store
         try {
           const store = await load("passwords.json", { autoSave: true, defaults: {} });
-          await store.set("passwords", result.passwords);
+          await store.set("passwords", activeProfile?.passwords || []);
           await store.set("profiles", updatedProfiles);
           await store.set("sync_config", updatedConfig);
         } catch (err) {
@@ -179,7 +181,7 @@ export default function App() {
 
         // Trigger Auto-Sync on startup if enabled
         if (currentConfig.autoSync) {
-          executeSync(loadedPasswords, currentConfig);
+          executeSync(loadedProfiles, currentConfig);
         }
       } catch (err) {
         console.error("Failed to load store:", err);
@@ -256,7 +258,7 @@ export default function App() {
       const newConfig = { ...syncConfig, vaultId: user.vaults[0].vaultId };
       setSyncConfig(newConfig);
       await handleSaveConfig(newConfig);
-      executeSync(passwords, newConfig);
+      executeSync(profilesRef.current, newConfig);
     }
   };
 
@@ -264,11 +266,11 @@ export default function App() {
     const newConfig = { ...syncConfig, vaultId };
     setSyncConfig(newConfig);
     await handleSaveConfig(newConfig);
-    executeSync(passwords, newConfig);
+    executeSync(profilesRef.current, newConfig);
   };
 
   const handleManualSync = async () => {
-    await executeSync(passwords, syncConfig);
+    await executeSync(profilesRef.current, syncConfig);
   };
 
   const filteredPasswords = passwords.filter(
@@ -352,19 +354,19 @@ export default function App() {
       password: newEntry.password || "",
       customFields: newEntry.customFields || [],
       updatedAt: now,
-      createdAt: editingId ? undefined : now,
+      createdAt: editingId ? newEntry.createdAt : now,
       isDeleted: false,
+      profileId: newEntry.profileId || currentProfileId,
     };
-
-    let newPasswords: PasswordEntry[];
-    if (editingId) {
-      newPasswords = passwords.map((p) => (p.id === editingId ? { ...p, ...entry } : p));
-    } else {
-      newPasswords = [...passwords, entry];
-    }
-
-    setPasswords(newPasswords);
-    saveToStore(newPasswords);
+    const updatedProfiles = profilesRef.current.map(profile => {
+      const withoutEntry = profile.passwords.filter(password => password.id !== entry.id);
+      if (profile.id === entry.profileId) return { ...profile, passwords: [...withoutEntry, entry], updatedAt: now };
+      return { ...profile, passwords: withoutEntry, updatedAt: profile.id === currentProfileId ? now : profile.updatedAt };
+    });
+    profilesRef.current = updatedProfiles;
+    setProfiles(updatedProfiles);
+    setPasswords(updatedProfiles.find(profile => profile.id === currentProfileId)?.passwords || []);
+    storeProfiles(updatedProfiles);
     setHasUnsyncedChanges(true);
 
     setIsEditing(false);
@@ -372,7 +374,7 @@ export default function App() {
 
     // Auto-sync changes if enabled
     if (syncConfig.autoSync) {
-      executeSync(newPasswords, syncConfig);
+      executeSync(updatedProfiles, syncConfig);
     }
   };
 
@@ -402,7 +404,10 @@ export default function App() {
         updatedAt: Date.now(),
         deletedAt: Date.now(),
       };
-      executeSync([...newPasswords, tombstone], syncConfig);
+      const updatedProfiles = profilesRef.current.map(profile => profile.id === currentProfileId
+        ? { ...profile, passwords: [...newPasswords, tombstone], updatedAt: Date.now() }
+        : profile);
+      executeSync(updatedProfiles, syncConfig);
     }
   };
 
@@ -818,6 +823,20 @@ export default function App() {
                   {!isEditing && renderCopyIndicator("password")}
                 </div>
               </div>
+
+              {isEditing && (
+                <div>
+                  <label className="block text-xs font-medium text-neutral-400 mb-1.5">Profile</label>
+                  <select
+                    value={newEntry.profileId || currentProfileId}
+                    onChange={(e) => setNewEntry({ ...newEntry, profileId: e.target.value })}
+                    className="w-full bg-neutral-950 border border-neutral-800 text-neutral-100 rounded-lg px-3 py-2 outline-none text-sm"
+                  >
+                    {profiles.map(profile => <option key={profile.id} value={profile.id}>{profile.name}</option>)}
+                  </select>
+                  {editingId && <p className="mt-1.5 text-xs text-neutral-500">Choose another profile and save to move this password.</p>}
+                </div>
+              )}
 
               {/* Custom Fields */}
               <div className="pt-2 border-t border-neutral-800">

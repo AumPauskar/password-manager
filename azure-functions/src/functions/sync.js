@@ -73,7 +73,7 @@ function mergeEntries(localEntries, remoteEntries) {
 /**
  * Handles Passwords synchronization with Azure Cosmos DB
  */
-async function syncWithCosmos(vaultId, localPasswords, context) {
+async function syncWithCosmos(vaultId, localPasswords, localProfiles, context) {
   const { passwordsContainer } = await getCosmosContainers();
 
   // Query all existing passwords for this vaultId
@@ -82,15 +82,21 @@ async function syncWithCosmos(vaultId, localPasswords, context) {
     parameters: [{ name: "@vaultId", value: vaultId }],
   };
 
-  const { resources: remotePasswords } = await passwordsContainer.items
+  const { resources: remoteRecords } = await passwordsContainer.items
     .query(querySpec, { partitionKey: vaultId })
     .fetchAll();
 
   // Merge entries
+  const remotePasswords = remoteRecords.filter((record) => record.recordType !== "profile");
+  const remoteProfiles = remoteRecords.filter((record) => record.recordType === "profile");
+  const profileRecords = localProfiles.map((profile) => ({
+    ...profile, id: `profile:${profile.id}`, profileId: profile.id, passwords: undefined, recordType: "profile",
+  }));
   const merged = mergeEntries(localPasswords, remotePasswords);
+  const mergedProfileRecords = mergeEntries(profileRecords, remoteProfiles);
 
   // Bulk upsert changed items to Cosmos DB
-  const operations = merged.map((entry) => {
+  const operations = [...merged, ...mergedProfileRecords].map((entry) => {
     const item = {
       ...entry,
       vaultId,
@@ -103,13 +109,13 @@ async function syncWithCosmos(vaultId, localPasswords, context) {
 
   await Promise.all(operations);
 
-  return merged;
+  return { passwords: merged, profiles: mergedProfileRecords.map(({ id, profileId, recordType, vaultId: ignored, ...profile }) => ({ ...profile, id: profileId })) };
 }
 
 /**
  * Fallback: Handles Passwords synchronization with Azure Blob Storage
  */
-async function syncWithBlob(vaultId, localPasswords) {
+async function syncWithBlob(vaultId, localPasswords, localProfiles) {
   if (!blobConnectionString) {
     throw new Error("Neither COSMOS_DB_CONNECTION_STRING nor AzureWebJobsStorage is configured.");
   }
@@ -121,17 +127,21 @@ async function syncWithBlob(vaultId, localPasswords) {
   const blobClient = containerClient.getBlockBlobClient(`vault-${vaultId}.json`);
 
   let remotePasswords = [];
+  let remoteProfiles = [];
   if (await blobClient.exists()) {
     const downloadResponse = await blobClient.downloadToBuffer();
-    remotePasswords = JSON.parse(downloadResponse.toString());
+    const stored = JSON.parse(downloadResponse.toString());
+    remotePasswords = Array.isArray(stored) ? stored : stored.passwords || [];
+    remoteProfiles = Array.isArray(stored) ? [] : stored.profiles || [];
   }
 
   const merged = mergeEntries(localPasswords, remotePasswords);
+  const mergedProfiles = mergeEntries(localProfiles, remoteProfiles).map(({ passwords, ...profile }) => profile);
 
-  const content = JSON.stringify(merged, null, 2);
+  const content = JSON.stringify({ passwords: merged, profiles: mergedProfiles }, null, 2);
   await blobClient.upload(content, content.length, { overwrite: true });
 
-  return merged;
+  return { passwords: merged, profiles: mergedProfiles };
 }
 
 /**
@@ -228,15 +238,16 @@ app.http("sync", {
       // Default: Synchronize passwords
       const vaultId = body.vaultId || "default";
       const localPasswords = body.passwords || [];
+      const localProfiles = body.profiles || [];
 
-      let mergedPasswords = [];
+      let syncedVault = { passwords: [], profiles: [] };
       let backendUsed = "cosmos";
 
       if (cosmosConnectionString) {
-        mergedPasswords = await syncWithCosmos(vaultId, localPasswords, context);
+        syncedVault = await syncWithCosmos(vaultId, localPasswords, localProfiles, context);
       } else {
         backendUsed = "blob";
-        mergedPasswords = await syncWithBlob(vaultId, localPasswords);
+        syncedVault = await syncWithBlob(vaultId, localPasswords, localProfiles);
       }
 
       return {
@@ -246,7 +257,8 @@ app.http("sync", {
           success: true,
           backend: backendUsed,
           vaultId,
-          passwords: mergedPasswords,
+          passwords: syncedVault.passwords,
+          profiles: syncedVault.profiles,
           syncedAt: Date.now(),
         },
       };

@@ -1,4 +1,4 @@
-import { PasswordEntry, CloudSyncConfig, SyncResult } from "../types/sync";
+import { PasswordEntry, PasswordProfile, CloudSyncConfig, SyncResult } from "../types/sync";
 
 const SIMULATED_VAULT_KEY = "azure_simulated_cloud_vault";
 
@@ -58,14 +58,39 @@ export function mergeVaults(
   return { merged: activeEntries, sentCount, receivedCount };
 }
 
+function mergeProfiles(localProfiles: PasswordProfile[], remoteProfiles: PasswordProfile[], passwords: PasswordEntry[]): PasswordProfile[] {
+  const profilesById = new Map<string, PasswordProfile>();
+  for (const profile of [...remoteProfiles, ...localProfiles]) {
+    const existing = profilesById.get(profile.id);
+    if (!existing || (profile.updatedAt || profile.createdAt || 0) >= (existing.updatedAt || existing.createdAt || 0)) {
+      profilesById.set(profile.id, profile);
+    }
+  }
+
+  // Older clients did not send a profileId. Keep those entries in the first profile.
+  const fallbackProfileId = profilesById.keys().next().value as string | undefined;
+  return Array.from(profilesById.values()).map(profile => ({
+    ...profile,
+    passwords: passwords.filter(password => (password.profileId || fallbackProfileId) === profile.id),
+  }));
+}
+
 /**
  * Performs bi-directional synchronization with Azure Function (Cosmos DB or Blob) or Simulated Sandbox
  */
 export async function performCloudSync(
-  localEntries: PasswordEntry[],
+  localProfiles: PasswordProfile[],
   config: CloudSyncConfig
 ): Promise<SyncResult> {
   const now = Date.now();
+  const localEntries = localProfiles.flatMap(profile =>
+    profile.passwords.map(entry => ({ ...entry, profileId: entry.profileId || profile.id }))
+  );
+  const normalizedProfiles = localProfiles.map(profile => ({
+    ...profile,
+    passwords: [],
+    updatedAt: profile.updatedAt || profile.createdAt || now,
+  }));
   
   // Ensure all local entries have an updatedAt timestamp
   const normalizedLocal = localEntries.map(entry => ({
@@ -80,6 +105,7 @@ export async function performCloudSync(
       return {
         success: false,
         passwords: localEntries,
+        profiles: localProfiles,
         stats: { sentCount: 0, receivedCount: 0, totalCount: localEntries.length, lastSyncedAt: config.lastSyncedAt },
         error: "Azure Function URL is not configured. Please enter your Endpoint URL in Cloud Sync Settings.",
       };
@@ -111,6 +137,7 @@ export async function performCloudSync(
           action: "sync",
           vaultId: config.vaultId || "default",
           passwords: normalizedLocal,
+          profiles: normalizedProfiles,
           lastSyncedAt: config.lastSyncedAt,
         }),
       });
@@ -128,13 +155,16 @@ export async function performCloudSync(
         : Array.isArray(responseData.passwords)
         ? responseData.passwords
         : [];
+      const remoteProfiles: PasswordProfile[] = Array.isArray(responseData?.profiles) ? responseData.profiles : [];
 
       // Step 2: Merge local & remote entries
       const { merged, sentCount, receivedCount } = mergeVaults(normalizedLocal, remoteEntries);
+      const profiles = mergeProfiles(normalizedProfiles, remoteProfiles, merged);
 
       return {
         success: true,
         passwords: merged,
+        profiles,
         backend: responseData.backend || "cosmos",
         stats: {
           sentCount,
@@ -148,6 +178,7 @@ export async function performCloudSync(
       return {
         success: false,
         passwords: localEntries,
+        profiles: localProfiles,
         stats: { sentCount: 0, receivedCount: 0, totalCount: localEntries.length, lastSyncedAt: config.lastSyncedAt },
         error: err.message || "Failed to communicate with Azure Serverless Function.",
       };
@@ -157,10 +188,13 @@ export async function performCloudSync(
     await new Promise(resolve => setTimeout(resolve, 750)); // Realistic network latency simulation
 
     let simulatedRemoteEntries: PasswordEntry[] = [];
+    let simulatedRemoteProfiles: PasswordProfile[] = [];
     try {
       const storedVault = localStorage.getItem(SIMULATED_VAULT_KEY);
       if (storedVault) {
-        simulatedRemoteEntries = JSON.parse(storedVault);
+        const parsed = JSON.parse(storedVault);
+        simulatedRemoteEntries = Array.isArray(parsed) ? parsed : parsed.passwords || [];
+        simulatedRemoteProfiles = Array.isArray(parsed) ? [] : parsed.profiles || [];
       } else {
         // Initial seed demo entry in simulated cloud
         simulatedRemoteEntries = [
@@ -181,10 +215,11 @@ export async function performCloudSync(
     }
 
     const { merged, sentCount, receivedCount } = mergeVaults(normalizedLocal, simulatedRemoteEntries);
+    const profiles = mergeProfiles(normalizedProfiles, simulatedRemoteProfiles, merged);
 
     // Save updated simulated remote vault
     try {
-      localStorage.setItem(SIMULATED_VAULT_KEY, JSON.stringify(merged));
+      localStorage.setItem(SIMULATED_VAULT_KEY, JSON.stringify({ passwords: merged, profiles: profiles.map(({ passwords, ...profile }) => profile) }));
     } catch (e) {
       console.error("Failed to update simulated Azure vault in local storage", e);
     }
@@ -192,6 +227,7 @@ export async function performCloudSync(
     return {
       success: true,
       passwords: merged,
+      profiles,
       backend: "simulated",
       stats: {
         sentCount,
@@ -237,7 +273,10 @@ export function simulateRemoteAzureUpdate(): PasswordEntry {
   let currentVault: PasswordEntry[] = [];
   try {
     const raw = localStorage.getItem(SIMULATED_VAULT_KEY);
-    if (raw) currentVault = JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      currentVault = Array.isArray(parsed) ? parsed : parsed.passwords || [];
+    }
   } catch (e) {}
 
   currentVault.push(newRemoteItem);
