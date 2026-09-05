@@ -38,6 +38,7 @@ const DEFAULT_SYNC_CONFIG: CloudSyncConfig = {
   lastSyncedAt: null,
 };
 const ALL_PROFILES_ID = "__all_profiles__";
+const WEB_SYNC_CONFIG_KEY = "passwords_sync_config";
 
 export default function App() {
   const [passwords, setPasswords] = useState<PasswordEntry[]>([]);
@@ -116,6 +117,8 @@ export default function App() {
           await store.set("sync_config", updatedConfig);
         } catch (err) {
           console.error("Failed to save store after sync:", err);
+          localStorage.setItem("passwords_profiles", JSON.stringify(updatedProfiles));
+          localStorage.setItem(WEB_SYNC_CONFIG_KEY, JSON.stringify(updatedConfig));
         }
 
         setSyncStatus("success");
@@ -195,8 +198,10 @@ export default function App() {
         setProfiles(loadedProfiles);
         setCurrentProfileId(activeProfile.id);
         setPasswords(activeProfile.passwords);
-        const savedConfig = JSON.parse(localStorage.getItem("passwords_sync_config") || "null") as CloudSyncConfig | null;
-        const config = { ...DEFAULT_SYNC_CONFIG, ...savedConfig };
+        const savedConfig = JSON.parse(localStorage.getItem(WEB_SYNC_CONFIG_KEY) || "null") as CloudSyncConfig | null;
+        const savedUser = await getLocalAccount();
+        if (savedUser) setCurrentUser(savedUser);
+        const config = { ...DEFAULT_SYNC_CONFIG, ...savedConfig, vaultId: savedConfig?.vaultId || savedUser?.vaults?.[0]?.vaultId || "default" };
         setSyncConfig(config);
         if (config.autoSync && config.azureFunctionUrl) executeSync(loadedProfiles, config);
       }
@@ -260,12 +265,14 @@ export default function App() {
 
   const handleSaveConfig = async (newConfig: CloudSyncConfig) => {
     setSyncConfig(newConfig);
+    // Keep the browser deployment usable across reloads; Tauri keeps its native copy too.
+    localStorage.setItem(WEB_SYNC_CONFIG_KEY, JSON.stringify(newConfig));
     try {
       const store = await load("passwords.json", { autoSave: true, defaults: {} });
       await store.set("sync_config", newConfig);
     } catch (err) {
       console.error("Failed to save sync config:", err);
-      localStorage.setItem("passwords_sync_config", JSON.stringify(newConfig));
+      localStorage.setItem(WEB_SYNC_CONFIG_KEY, JSON.stringify(newConfig));
     }
   };
 
