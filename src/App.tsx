@@ -37,6 +37,7 @@ const DEFAULT_SYNC_CONFIG: CloudSyncConfig = {
   autoSync: true,
   lastSyncedAt: null,
 };
+const ALL_PROFILES_ID = "__all_profiles__";
 
 export default function App() {
   const [passwords, setPasswords] = useState<PasswordEntry[]>([]);
@@ -185,6 +186,19 @@ export default function App() {
         }
       } catch (err) {
         console.error("Failed to load store:", err);
+        // GitHub Pages runs in a browser, where Tauri's native store is unavailable.
+        const savedProfiles = JSON.parse(localStorage.getItem("passwords_profiles") || "null") as PasswordProfile[] | null;
+        const loadedProfiles = savedProfiles?.length ? savedProfiles : [{ id: crypto.randomUUID(), name: "Personal", passwords: [], createdAt: Date.now() }];
+        const activeProfile = loadedProfiles[0];
+        profilesRef.current = loadedProfiles;
+        currentProfileIdRef.current = activeProfile.id;
+        setProfiles(loadedProfiles);
+        setCurrentProfileId(activeProfile.id);
+        setPasswords(activeProfile.passwords);
+        const savedConfig = JSON.parse(localStorage.getItem("passwords_sync_config") || "null") as CloudSyncConfig | null;
+        const config = { ...DEFAULT_SYNC_CONFIG, ...savedConfig };
+        setSyncConfig(config);
+        if (config.autoSync && config.azureFunctionUrl) executeSync(loadedProfiles, config);
       }
     }
     initStore();
@@ -225,8 +239,12 @@ export default function App() {
   };
 
   const storeProfiles = async (items: PasswordProfile[]) => {
-    const store = await load("passwords.json", { autoSave: true, defaults: {} });
-    await store.set("profiles", items);
+    try {
+      const store = await load("passwords.json", { autoSave: true, defaults: {} });
+      await store.set("profiles", items);
+    } catch {
+      localStorage.setItem("passwords_profiles", JSON.stringify(items));
+    }
   };
 
   const deleteCurrentProfile = async () => {
@@ -247,6 +265,7 @@ export default function App() {
       await store.set("sync_config", newConfig);
     } catch (err) {
       console.error("Failed to save sync config:", err);
+      localStorage.setItem("passwords_sync_config", JSON.stringify(newConfig));
     }
   };
 
@@ -273,7 +292,9 @@ export default function App() {
     await executeSync(profilesRef.current, syncConfig);
   };
 
-  const filteredPasswords = passwords.filter(
+  const allPasswords = profiles.flatMap(profile => profile.passwords);
+  const displayedPasswords = currentProfileId === ALL_PROFILES_ID ? allPasswords : passwords;
+  const filteredPasswords = displayedPasswords.filter(
     (p) =>
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
       p.username.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -482,6 +503,9 @@ export default function App() {
       <main className="flex-1 overflow-hidden flex flex-col max-w-4xl mx-auto w-full p-6 gap-6 relative">
         <div className="flex items-center gap-2 overflow-x-auto pb-1">
           <span className="text-xs text-neutral-500 shrink-0">Profiles</span>
+          <button onClick={() => { setCurrentProfileId(ALL_PROFILES_ID); setPasswords(allPasswords); setSearchTerm(""); }} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs transition-colors shrink-0 ${currentProfileId === ALL_PROFILES_ID ? "bg-emerald-950/50 border-emerald-700 text-emerald-300" : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"}`}>
+            <FolderLock className="w-3.5 h-3.5" /> All
+          </button>
           {profiles.map((profile) => (
             <button key={profile.id} onClick={() => switchProfile(profile)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs transition-colors shrink-0 ${profile.id === currentProfileId ? "bg-emerald-950/50 border-emerald-700 text-emerald-300" : "bg-neutral-900 border-neutral-800 text-neutral-400 hover:text-white"}`}>
               <FolderLock className="w-3.5 h-3.5" /> {profile.name}
