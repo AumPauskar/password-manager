@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import {
   Key,
   Copy,
@@ -42,6 +42,10 @@ export default function App() {
   const [passwords, setPasswords] = useState<PasswordEntry[]>([]);
   const [profiles, setProfiles] = useState<PasswordProfile[]>([]);
   const [currentProfileId, setCurrentProfileId] = useState<string>("");
+  const profilesRef = useRef(profiles);
+  const currentProfileIdRef = useRef(currentProfileId);
+  profilesRef.current = profiles;
+  currentProfileIdRef.current = currentProfileId;
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [newProfileName, setNewProfileName] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
@@ -91,6 +95,13 @@ export default function App() {
         setSyncStats(result.stats);
         setHasUnsyncedChanges(false);
 
+        // Sync belongs to the active profile. Keep the profile record in sync too;
+        // otherwise the next profile switch or app restart loses the synced data.
+        const updatedProfiles = profilesRef.current.map((profile) =>
+          profile.id === currentProfileIdRef.current ? { ...profile, passwords: result.passwords } : profile
+        );
+        setProfiles(updatedProfiles);
+
         const updatedConfig = { ...config, lastSyncedAt: result.stats.lastSyncedAt };
         setSyncConfig(updatedConfig);
 
@@ -98,6 +109,7 @@ export default function App() {
         try {
           const store = await load("passwords.json", { autoSave: true, defaults: {} });
           await store.set("passwords", result.passwords);
+          await store.set("profiles", updatedProfiles);
           await store.set("sync_config", updatedConfig);
         } catch (err) {
           console.error("Failed to save store after sync:", err);
@@ -131,6 +143,8 @@ export default function App() {
         const personal: PasswordProfile = { id: crypto.randomUUID(), name: "Personal", passwords: savedPasswords || [], createdAt: Date.now() };
         const loadedProfiles = savedProfiles?.length ? savedProfiles : [personal];
         const activeProfile = loadedProfiles[0];
+        profilesRef.current = loadedProfiles;
+        currentProfileIdRef.current = activeProfile.id;
         setProfiles(loadedProfiles);
         setCurrentProfileId(activeProfile.id);
         const loadedPasswords = activeProfile.passwords;
