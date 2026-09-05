@@ -22,3 +22,12 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Generated non-Windows Tauri icon assets. Keep icon.ico tracked for Windows builds.
+/src-tauri/icons/64x64.png
+/src-tauri/icons/ios/
+/src-tauri/gen/android/app/src/main/res/mipmap-anydpi-v26/
+/src-tauri/gen/android/app/src/main/res/values/ic_launcher_background.xml
+
+# env files ommitted from git
+.env
